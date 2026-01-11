@@ -1,0 +1,44 @@
+inherits: [configs/base.yaml]
+
+stage: stage2_compiler
+
+data_mix:
+  - {source: webvideo,  path: configs/data/webvideo.yaml,  weight: 0.60}
+  - {source: robotics,  path: configs/data/robotics.yaml,  weight: 0.20}
+  - {source: sim,       path: configs/data/sim.yaml,       weight: 0.20}
+
+model:
+  encoder: configs/model/encoder.yaml
+  erfg: configs/model/erfg.yaml
+  compiler: configs/model/compiler.yaml
+
+train:
+  max_steps: 150000
+  input_res: 320
+  sequence_len: 8
+  batch_size: 6
+  grad_accum: 6
+  eval_batch_size: 4
+
+optim:
+  name: adamw
+  lr: 1.5e-4
+  weight_decay: 0.05
+  betas: [0.9, 0.95]
+  schedule: {name: cosine, warmup_steps: 3000, min_lr: 1.5e-5}
+
+freeze:
+  encoder_backbone: true
+  encoder_heads: false
+
+unfreeze_schedule:
+  at_step: 40000
+  encoder_backbone_lr_mult: 0.1
+
+loss:
+  lambda_assoc: 1.0
+  lambda_pose: 1.0
+  lambda_vel: 0.5
+  lambda_rel: 1.0
+  lambda_mix: 0.05
+  lambda_cal: 0.2

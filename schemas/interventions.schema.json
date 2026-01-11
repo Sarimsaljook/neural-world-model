@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nwm.local/schemas/interventions.schema.json",
+  "title": "NWM Counterfactual / Intervention Query Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["query_id", "timestamp_ns", "base_state_version", "interventions"],
+  "properties": {
+    "query_id": { "type": "string", "minLength": 1 },
+    "timestamp_ns": { "type": "integer", "minimum": 0 },
+    "base_state_version": { "type": "integer", "minimum": 0 },
+
+    "horizon_ms": { "type": "integer", "minimum": 50, "maximum": 10000, "default": 1000 },
+    "num_samples": { "type": "integer", "minimum": 1, "maximum": 256, "default": 32 },
+
+    "interventions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/intervention" }
+    },
+
+    "extras": { "type": "object", "additionalProperties": true }
+  },
+
+  "$defs": {
+    "vec3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "intervention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "apply_force",
+            "apply_torque",
+            "set_velocity",
+            "grasp",
+            "release",
+            "push",
+            "pull",
+            "tap",
+            "camera_shift",
+            "wait_observe",
+            "toggle_constraint"
+          ]
+        },
+
+        "entity_id": { "type": "string", "minLength": 1 },
+
+        "force": { "$ref": "#/$defs/vec3" },
+        "torque": { "$ref": "#/$defs/vec3" },
+        "velocity": { "$ref": "#/$defs/vec3" },
+
+        "magnitude": { "type": "number", "minimum": 0 },
+        "duration_ms": { "type": "integer", "minimum": 1, "maximum": 5000 },
+
+        "grasp_affordance": {
+          "type": "string",
+          "enum": ["handle", "top", "side", "pinch", "custom"]
+        },
+        "grasp_point": { "$ref": "#/$defs/vec3" },
+
+        "camera_delta": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["translation"],
+          "properties": {
+            "translation": { "$ref": "#/$defs/vec3" },
+            "rotation_axis_angle": { "$ref": "#/$defs/vec3" }
+          }
+        },
+
+        "constraint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "enabled"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "enabled": { "type": "boolean" }
+          }
+        },
+
+        "notes": { "type": "string" },
+        "extras": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

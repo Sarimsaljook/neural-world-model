@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nwm.local/schemas/metrics.schema.json",
+  "title": "NWM Metrics Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "timestamp_ns", "metrics"],
+  "properties": {
+    "run_id": { "type": "string", "minLength": 1 },
+    "timestamp_ns": { "type": "integer", "minimum": 0 },
+
+    "stage": {
+      "type": ["string", "null"],
+      "enum": [
+        "stage1_encoder",
+        "stage2_compiler",
+        "stage3_mechanisms",
+        "stage4_intuition",
+        "stage5_probe_planner",
+        "stage6_memory",
+        null
+      ]
+    },
+
+    "metrics": {
+      "type": "object",
+      "additionalProperties": { "type": "number" },
+      "description": "Flat key->value numeric metrics. Example keys: loss/total, calib/ece, rel/f1, track/mota."
+    },
+
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Optional paths/urls for artifacts (plots, checkpoints)."
+    },
+
+    "extras": { "type": "object", "additionalProperties": true }
+  }
+}

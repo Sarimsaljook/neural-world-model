@@ -1,0 +1,40 @@
+name: memory
+
+stores:
+  episodic:
+    enable: true
+    ttl_days: 30
+    snapshot_interval_s: 2.0
+    compress:
+      method: autoencoder
+      latent_dim: 256
+  semantic:
+    enable: true
+    concept_dim: 256
+    update_interval_s: 5.0
+  spatial:
+    enable: true
+    map_resolution_m: 0.05
+    decay: 0.99
+  rule_memory:
+    enable: true
+    operator_prior_dim: 128
+    update_on_surprise: true
+    surprise_threshold: 3.0
+
+retrieval:
+  backend: faiss
+  index: HNSW
+  ef_construction: 200
+  ef_search: 64
+  max_items: 200000
+  embedding_dim: 256
+
+consolidation:
+  enable: true
+  schedule_minutes: 60
+  replay_batch: 128
+  objectives:
+    episodic_recon_weight: 1.0
+    concept_infonce_weight: 0.5
+    rule_update_weight: 0.2

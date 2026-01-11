@@ -1,0 +1,40 @@
+inherits: [configs/base.yaml]
+
+stage: stage3_mechanisms
+
+data_mix:
+  - {source: sim,      path: configs/data/sim.yaml,      weight: 0.65}
+  - {source: robotics, path: configs/data/robotics.yaml, weight: 0.25}
+  - {source: webvideo, path: configs/data/webvideo.yaml, weight: 0.10}
+
+model:
+  encoder: configs/model/encoder.yaml
+  erfg: configs/model/erfg.yaml
+  compiler: configs/model/compiler.yaml
+  mechanisms: configs/model/mechanisms.yaml
+
+train:
+  max_steps: 250000
+  input_res: 256
+  sequence_len: 12
+  batch_size: 4
+  grad_accum: 8
+  eval_batch_size: 2
+
+optim:
+  name: adamw
+  lr: 1.2e-4
+  weight_decay: 0.02
+  betas: [0.9, 0.95]
+  schedule: {name: cosine, warmup_steps: 5000, min_lr: 1.2e-5}
+
+freeze:
+  encoder_backbone: true
+  encoder_heads: true
+  compiler: false
+
+loss:
+  lambda_route: 1.0
+  lambda_param: 1.0
+  lambda_dyn: 2.0
+  lambda_expl: 0.5

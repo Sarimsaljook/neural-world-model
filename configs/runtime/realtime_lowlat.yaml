@@ -1,0 +1,40 @@
+inherits: [configs/base.yaml]
+
+runtime:
+  mode: low_latency
+
+camera:
+  backend: opencv
+  device_index: 0
+  fps: 30
+  width: 1280
+  height: 720
+
+pipeline:
+  input_res: 320
+  clocks:
+    sensory_hz: 30
+    micro_hz: 10
+    event_hz: 2
+    intent_hz: 0.2
+    narrative_hz: 0.0167
+
+models:
+  encoder_ckpt: ${paths.checkpoints_root}/stage1_encoder.pt
+  compiler_ckpt: ${paths.checkpoints_root}/stage2_compiler.pt
+  mechanisms_ckpt: ${paths.checkpoints_root}/stage3_mechanisms.pt
+  intuition_ckpt: ${paths.checkpoints_root}/stage4_intuition.pt
+  memory_dir: ${paths.outputs_root}/memory_store
+
+safety:
+  max_risk: 0.7
+  min_confidence: 0.5
+  anomaly_threshold: 3.0
+
+api:
+  host: 0.0.0.0
+  port: 8080
+
+viz:
+  overlay: true
+  dashboard: false

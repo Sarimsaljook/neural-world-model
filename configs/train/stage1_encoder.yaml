@@ -1,0 +1,36 @@
+inherits: [configs/base.yaml]
+
+stage: stage1_encoder
+
+data_mix:
+  - {source: webvideo, path: configs/data/webvideo.yaml, weight: 0.70}
+  - {source: sim,      path: configs/data/sim.yaml,      weight: 0.30}
+
+model:
+  encoder: configs/model/encoder.yaml
+
+train:
+  max_steps: 200000
+  input_res: 320
+  sequence_len: 2
+  batch_size: 12
+  grad_accum: 4
+  eval_batch_size: 8
+
+optim:
+  name: adamw
+  lr: 3.0e-4
+  weight_decay: 0.05
+  betas: [0.9, 0.95]
+  schedule: {name: cosine, warmup_steps: 5000, min_lr: 3.0e-5}
+
+freeze:
+  backbone: false
+  heads: false
+
+loss:
+  lambda_cls: 1.0
+  lambda_reid: 0.5
+  lambda_depth: 0.4
+  lambda_flow: 0.2
+  lambda_unc: 0.2

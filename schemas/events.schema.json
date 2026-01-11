@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nwm.local/schemas/events.schema.json",
+  "title": "NWM Event Stream Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["events"],
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event_token" }
+    },
+    "extras": { "type": "object", "additionalProperties": true }
+  },
+  "$defs": {
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "contact_begin", "contact_end",
+        "grasp_begin", "grasp_end",
+        "attach_inferred", "detach_inferred",
+        "spill", "tip", "jam",
+        "slide", "hinge_rotate",
+        "collision",
+        "occlusion_enter", "occlusion_exit",
+        "support_lost", "support_gained"
+      ]
+    },
+    "event_token": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_type", "timestamp_ns", "participants", "confidence", "params"],
+      "properties": {
+        "event_type": { "$ref": "#/$defs/event_type" },
+        "timestamp_ns": { "type": "integer", "minimum": 0 },
+        "participants": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["number", "string", "boolean", "array", "object", "null"]
+          }
+        },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start_ns", "end_ns"],
+          "properties": {
+            "start_ns": { "type": "integer", "minimum": 0 },
+            "end_ns": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "extras": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

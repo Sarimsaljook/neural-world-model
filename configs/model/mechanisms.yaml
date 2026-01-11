@@ -1,0 +1,57 @@
+name: mechanisms
+
+router:
+  type: gnn_router
+  hidden_dim: 256
+  layers: 3
+  dropout: 0.1
+  temperature: 0.7
+  topk_ops: 4
+
+operators:
+  rigid:
+    enable: true
+    dt: 0.0333333
+
+  support:
+    enable: true
+    stability_margin: 0.02
+
+  contact:
+    enable: true
+    friction_model: coulomb
+    impulse_clip: 2.0
+
+  hinge:
+    enable: true
+    axis_estimation: learned
+    angle_limits: learned
+
+  slider:
+    enable: true
+    axis_estimation: learned
+    limit_estimation: learned
+
+  grasp:
+    enable: true
+    hand_model: simplified
+
+  contain:
+    enable: true
+    fluid_model: coarse_volume
+    spill_angle_deg: 22
+
+  deform:
+    enable: false
+    model: coarse_elastic
+
+execution:
+  compose:
+    method: operator_sum
+    clamp_cov: [1.0e-6, 1.0]
+
+losses:
+  route_bce_weight: 1.0
+  param_nll_weight: 1.0
+  dyn_nll_weight: 2.0
+  explain_ce_weight: 0.5

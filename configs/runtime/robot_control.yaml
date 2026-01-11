@@ -1,0 +1,43 @@
+inherits: [configs/base.yaml]
+
+runtime:
+  mode: robot_control
+
+robot:
+  interface: ros2
+  topic_rgb: /camera/color/image_raw
+  topic_depth: /camera/depth/image_raw
+  topic_state: /robot/state
+  topic_action: /robot/action_cmd
+  control_hz: 10
+
+pipeline:
+  input_res: 320
+  clocks:
+    sensory_hz: 30
+    micro_hz: 10
+    event_hz: 3
+    intent_hz: 0.5
+    narrative_hz: 0.0167
+
+models:
+  encoder_ckpt: ${paths.checkpoints_root}/stage1_encoder.pt
+  compiler_ckpt: ${paths.checkpoints_root}/stage2_compiler.pt
+  mechanisms_ckpt: ${paths.checkpoints_root}/stage3_mechanisms.pt
+  intuition_ckpt: ${paths.checkpoints_root}/stage4_intuition.pt
+  memory_dir: ${paths.outputs_root}/memory_store
+
+planning:
+  enable: true
+  planner_config: configs/model/planner.yaml
+  max_plan_latency_ms: 250
+
+active_probing:
+  enable: true
+  max_probes_per_minute: 12
+  probe_risk_cap: 0.6
+
+safety:
+  max_risk: 0.6
+  min_confidence: 0.6
+  stop_on_anomaly: true

@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nwm.local/schemas/evidence.schema.json",
+  "title": "NWM Evidence Packet Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["frame_id", "timestamp_ns", "camera", "instances"],
+  "properties": {
+    "frame_id": { "type": "integer", "minimum": 0 },
+    "timestamp_ns": { "type": "integer", "minimum": 0 },
+
+    "camera": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intrinsics"],
+      "properties": {
+        "intrinsics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fx", "fy", "cx", "cy", "width", "height"],
+          "properties": {
+            "fx": { "type": "number" },
+            "fy": { "type": "number" },
+            "cx": { "type": "number" },
+            "cy": { "type": "number" },
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "extrinsics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rotation_mat", "translation"],
+          "properties": {
+            "rotation_mat": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 9,
+              "maxItems": 9
+            },
+            "translation": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          }
+        }
+      }
+    },
+
+    "instances": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/instance" }
+    },
+
+    "depth": { "$ref": "#/$defs/raster_optional" },
+    "flow": { "$ref": "#/$defs/raster_optional" },
+    "uncertainty": { "$ref": "#/$defs/raster_optional" },
+
+    "extras": { "type": "object", "additionalProperties": true }
+  },
+
+  "$defs": {
+    "bbox": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 4,
+      "maxItems": 4,
+      "description": "[x1, y1, x2, y2]"
+    },
+    "raster_optional": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["encoding", "shape", "data"],
+      "properties": {
+        "encoding": { "type": "string", "enum": ["raw", "base64"] },
+        "shape": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 },
+          "minItems": 2,
+          "maxItems": 4
+        },
+        "dtype": { "type": "string", "enum": ["uint8", "float16", "float32", "int16", "int32"], "default": "float32" },
+        "data": { "type": "string", "minLength": 1 }
+      }
+    },
+    "mask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "data"],
+      "properties": {
+        "format": { "type": "string", "enum": ["rle", "polygon"] },
+        "data": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": { "type": "number" },
+                "minItems": 6
+              }
+            }
+          ]
+        }
+      }
+    },
+    "instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["det_id", "bbox", "class_logits", "embedding"],
+      "properties": {
+        "det_id": { "type": "string", "minLength": 1 },
+        "track_hint": { "type": ["string", "null"] },
+        "bbox": { "$ref": "#/$defs/bbox" },
+        "mask": { "$ref": "#/$defs/mask" },
+
+        "class_logits": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 1
+        },
+        "embedding": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 1
+        },
+
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "keypoints"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "keypoints": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "minItems": 2,
+                  "maxItems": 3
+                }
+              },
+              "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+
+        "pose_hint": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["position", "rotation_axis_angle"],
+          "properties": {
+            "position": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "rotation_axis_angle": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          }
+        },
+
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "extras": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+name: intuition
+
+inputs:
+  use_erfg: true
+  use_mechanisms: true
+
+heads:
+  stability:
+    enable: true
+    type: mlp
+    hidden: [256, 128]
+  slip:
+    enable: true
+    type: mlp
+    hidden: [256, 128]
+  support_validity:
+    enable: true
+    type: mlp
+    hidden: [256, 128]
+  collision_risk:
+    enable: true
+    type: pairwise_mlp
+    hidden: [256, 128]
+  containment_integrity:
+    enable: true
+    type: mlp
+    hidden: [256, 128]
+
+losses:
+  bce_weight: 1.0
+  rank_weight: 0.5
+  calibration_weight: 0.2
+
+calibration:
+  temperature_scaling: true
+  ece_bins: 15

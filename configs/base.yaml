@@ -1,0 +1,65 @@
+seed: 1337
+
+device:
+  type: cuda
+  index: 0
+
+precision:
+  amp: bf16
+  matmul_tf32: true
+  cudnn_benchmark: true
+
+compile:
+  enable_train: false
+  enable_infer: true
+  mode: reduce-overhead
+  dynamic: false
+
+paths:
+  project_root: .
+  data_root: ./data
+  outputs_root: ./outputs
+  checkpoints_root: ./checkpoints
+  logs_root: ./logs
+  cache_root: ./cache
+
+logging:
+  level: INFO
+  log_every_steps: 50
+  eval_every_steps: 2000
+  save_every_steps: 2000
+  keep_last_k: 5
+  tensorboard: true
+  wandb:
+    enable: false
+    project: nwm
+    entity: null
+
+dataloader:
+  num_workers: 6
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 4
+  drop_last: true
+
+optim_defaults:
+  grad_clip_norm: 1.0
+  zero_grad_set_to_none: true
+  ema:
+    enable: true
+    decay: 0.999
+    update_every_steps: 1
+
+repro:
+  deterministic: false
+  benchmark: true
+
+export:
+  onnx:
+    opset: 17
+    dynamic_axes: false
+  tensorrt:
+    enable: false
+    fp16: true
+    bf16: false
+    workspace_gb: 4

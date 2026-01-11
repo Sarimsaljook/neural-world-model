@@ -1,0 +1,29 @@
+inherits: [configs/base.yaml]
+
+stage: stage6_memory
+
+data_mix:
+  - {source: robotics, path: configs/data/robotics.yaml, weight: 0.60}
+  - {source: webvideo, path: configs/data/webvideo.yaml, weight: 0.40}
+
+model:
+  memory: configs/model/memory.yaml
+
+train:
+  max_steps: 60000
+  sequence_len: 16
+  batch_size: 32
+  grad_accum: 2
+  eval_batch_size: 32
+
+optim:
+  name: adamw
+  lr: 3.0e-4
+  weight_decay: 0.01
+  betas: [0.9, 0.95]
+  schedule: {name: cosine, warmup_steps: 1000, min_lr: 3.0e-5}
+
+loss:
+  lambda_epi: 1.0
+  lambda_concept: 0.5
+  lambda_rule: 0.2

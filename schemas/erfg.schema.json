@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nwm.local/schemas/erfg.schema.json",
+  "title": "NWM ERFG State Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["timestamp_ns", "version", "ego_frame", "world_frame", "hypotheses", "active_entities"],
+  "properties": {
+    "timestamp_ns": { "type": "integer", "minimum": 0 },
+    "version": { "type": "integer", "minimum": 0 },
+    "ego_frame": { "$ref": "#/$defs/frame" },
+    "world_frame": { "$ref": "#/$defs/frame" },
+    "hypotheses": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": { "$ref": "#/$defs/hypothesis_component" }
+    },
+    "active_entities": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "extras": { "type": "object", "additionalProperties": true }
+  },
+  "$defs": {
+    "vec": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 1
+    },
+    "mat": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 1
+    },
+    "gaussian": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mean", "cov"],
+      "properties": {
+        "mean": { "$ref": "#/$defs/vec" },
+        "cov": { "$ref": "#/$defs/mat" }
+      }
+    },
+    "se3_belief": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["position", "rotation"],
+      "properties": {
+        "position": { "$ref": "#/$defs/gaussian" },
+        "rotation": { "$ref": "#/$defs/gaussian" }
+      }
+    },
+    "velocity_belief": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["linear", "angular"],
+      "properties": {
+        "linear": { "$ref": "#/$defs/gaussian" },
+        "angular": { "$ref": "#/$defs/gaussian" }
+      }
+    },
+    "physical_props_belief": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mass", "friction", "restitution", "stiffness", "damping"],
+      "properties": {
+        "mass": { "$ref": "#/$defs/gaussian" },
+        "friction": { "$ref": "#/$defs/gaussian" },
+        "restitution": { "$ref": "#/$defs/gaussian" },
+        "stiffness": { "$ref": "#/$defs/gaussian" },
+        "damping": { "$ref": "#/$defs/gaussian" }
+      }
+    },
+    "geometry_proxy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "params"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["bbox", "sdf_grid", "capsule", "mesh_coarse"]
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "number" }
+          }
+        }
+      }
+    },
+    "affordances": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "graspable", "pushable", "pullable", "openable", "pourable",
+        "fragile", "hot", "sharp", "support_surface", "container"
+      ],
+      "properties": {
+        "graspable": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pushable": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pullable": { "type": "number", "minimum": 0, "maximum": 1 },
+        "openable": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pourable": { "type": "number", "minimum": 0, "maximum": 1 },
+        "fragile": { "type": "number", "minimum": 0, "maximum": 1 },
+        "hot": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sharp": { "type": "number", "minimum": 0, "maximum": 1 },
+        "support_surface": { "type": "number", "minimum": 0, "maximum": 1 },
+        "container": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "entity_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_id", "type_logits", "pose", "velocity", "geometry",
+        "props", "affordances", "appearance_embed", "last_seen_ts", "alive_prob"
+      ],
+      "properties": {
+        "entity_id": { "type": "string", "minLength": 1 },
+        "type_logits": { "type": "array", "items": { "type": "number" }, "minItems": 1 },
+        "pose": { "$ref": "#/$defs/se3_belief" },
+        "velocity": { "$ref": "#/$defs/velocity_belief" },
+        "geometry": { "$ref": "#/$defs/geometry_proxy" },
+        "props": { "$ref": "#/$defs/physical_props_belief" },
+        "affordances": { "$ref": "#/$defs/affordances" },
+        "appearance_embed": { "type": "array", "items": { "type": "number" }, "minItems": 1 },
+        "last_seen_ts": { "type": "integer", "minimum": 0 },
+        "alive_prob": { "type": "number", "minimum": 0, "maximum": 1 },
+        "parts": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/entity_node" }
+        },
+        "extras": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "relation_params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["params"],
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "number" }
+          }
+        }
+      }
+    },
+    "relation_edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["src", "dst", "predicate_logits", "confidence", "params"],
+      "properties": {
+        "src": { "type": "string", "minLength": 1 },
+        "dst": { "type": "string", "minLength": 1 },
+        "predicate_logits": { "type": "array", "items": { "type": "number" }, "minItems": 1 },
+        "predicate": {
+          "type": ["string", "null"],
+          "enum": [
+            "contact", "supporting", "supported_by", "inside", "contains",
+            "attached", "hinge", "slider", "held_by", "occludes",
+            "left_of", "right_of", "in_front_of", "behind", null
+          ]
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "params": { "$ref": "#/$defs/relation_params" },
+        "extras": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frame_id", "rotation_mat", "translation"],
+      "properties": {
+        "frame_id": { "type": "string", "minLength": 1 },
+        "rotation_mat": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 9,
+          "maxItems": 9
+        },
+        "translation": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      }
+    },
+    "hypothesis_component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["weight", "entities", "relations", "world_frame"],
+      "properties": {
+        "weight": { "type": "number", "minimum": 0 },
+        "entities": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/entity_node" }
+        },
+        "relations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/relation_edge" }
+        },
+        "world_frame": { "$ref": "#/$defs/frame" },
+        "extras": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

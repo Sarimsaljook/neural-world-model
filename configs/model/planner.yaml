@@ -1,0 +1,56 @@
+name: planner
+
+constraints:
+  language: false
+  dsl:
+    enable: true
+    max_constraints: 64
+
+event_programs:
+  library:
+    - approach
+    - grasp
+    - lift
+    - move
+    - place
+    - open
+    - close
+    - pour
+    - push
+    - pull
+  max_steps: 32
+
+control:
+  micro_mpc:
+    enable: true
+    horizon: 12
+    candidates: 256
+    dt: 0.0333333
+    cost_weights:
+      collision: 5.0
+      spill: 6.0
+      slip: 3.0
+      effort: 0.5
+      goal: 2.0
+
+safety:
+  risk_threshold: 0.7
+  min_confidence: 0.5
+  stop_on_anomaly: true
+
+active_probing:
+  enable: true
+  policy:
+    algo: sac
+    obs: erfg_and_uncertainty
+    action_space:
+      - camera_shift
+      - micro_push
+      - micro_pull
+      - micro_tap
+      - wait_observe
+    max_probe_cost: 1.0
+  objective:
+    info_gain_weight: 1.0
+    cost_weight: 0.2
+    risk_weight: 1.0

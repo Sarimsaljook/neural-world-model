@@ -1,0 +1,47 @@
+name: erfg
+
+limits:
+  max_entities: 64
+  max_relations: 4096
+  max_hypotheses: 3
+
+frames:
+  world_frame_id: world
+  ego_frame_id: ego
+
+belief:
+  pose:
+    rotation_repr: axis_angle
+    default_pos_sigma: 0.02
+    default_rot_sigma: 0.05
+  velocity:
+    default_lin_sigma: 0.10
+    default_ang_sigma: 0.20
+  props:
+    mass_prior: [1.0, 2.0]
+    friction_prior: [0.6, 0.3]
+    restitution_prior: [0.2, 0.2]
+
+geometry_proxy:
+  default: bbox
+  sdf_grid:
+    enabled: false
+    grid_res: 32
+  mesh_coarse:
+    enabled: false
+
+relation_candidates:
+  prune_by_distance_m: 2.0
+  prune_by_iou: 0.01
+  topk_per_entity: 16
+
+hypotheses:
+  update:
+    max_split: 1
+    merge_iou_thresh: 0.8
+  regularization:
+    entropy_weight: 0.05
+    temporal_l1_weight: 0.02
+
+serialization:
+  float_precision: 6

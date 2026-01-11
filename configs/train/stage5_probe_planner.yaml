@@ -1,0 +1,46 @@
+inherits: [configs/base.yaml]
+
+stage: stage5_probe_planner
+
+data_mix:
+  - {source: sim, path: configs/data/sim.yaml, weight: 1.0}
+
+model:
+  erfg: configs/model/erfg.yaml
+  mechanisms: configs/model/mechanisms.yaml
+  planner: configs/model/planner.yaml
+
+train:
+  max_steps: 200000
+  sequence_len: 32
+  batch_size: 1
+  grad_accum: 1
+
+rl:
+  algo: sac
+  replay_size: 500000
+  warmup_steps: 5000
+  update_every_steps: 1
+  gamma: 0.99
+  tau: 0.005
+  batch_size: 256
+  actor_lr: 3.0e-4
+  critic_lr: 3.0e-4
+  alpha: auto
+  target_entropy: auto
+
+objective:
+  info_gain_weight: 1.0
+  cost_weight: 0.2
+  risk_weight: 1.0
+
+distill:
+  enable: true
+  teacher:
+    type: constraint_mpc
+    rollout_horizon: 20
+    candidates: 512
+  losses:
+    lambda_bc: 1.0
+    lambda_v: 0.5
+    lambda_safe: 1.0
