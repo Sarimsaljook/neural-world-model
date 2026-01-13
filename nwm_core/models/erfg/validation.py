@@ -1,14 +1,12 @@
-from __future__ import annotations
+def validate_erfg(erfg):
+    for eid, ent in erfg.entities.items():
+        assert ent.pose.mean.shape[-1] in (2, 3, 6)
+        assert ent.pose.cov.shape[0] == ent.pose.cov.shape[1]
 
-from typing import Tuple
-from .state import ERFGState
+    for (a, b), rel in erfg.relations.items():
+        assert a in erfg.entities
+        assert b in erfg.entities
+        for p, prob in rel.predicates.items():
+            assert 0.0 <= prob <= 1.0
 
-def validate_erfg(s: ERFGState) -> Tuple[bool, str]:
-    if not s.hypotheses:
-        return False, "No hypotheses"
-    if s.timestamp_ns < 0:
-        return False, "Negative timestamp"
-    for h in s.hypotheses:
-        if h.weight < 0:
-            return False, "Negative hypothesis weight"
-    return True, "ok"
+    return True

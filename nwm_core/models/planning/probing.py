@@ -1,44 +1,77 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
-from ...models.erfg.state import ERFGState
+from typing import Any, Dict, List, Optional, Tuple
+
+import math
+
+
+@dataclass(frozen=True)
+class ProbingConfig:
+    min_uncertainty: float = 0.55
+    max_probes: int = 2
+    camera_only: bool = True
+    yaw_deg: float = 10.0
+    lateral_m: float = 0.10
 
 
 @dataclass(frozen=True)
 class ProbeAction:
     kind: str
-    target: Optional[str]
-    score: float
-    reason: str
+    params: Dict[str, float]
+    p: float
+    utility: float
 
 
-@dataclass(frozen=True)
-class ProbingConfig:
-    uncertainty_hi: float = 18.0
-    max_actions: int = 3
+class ProbingPolicy:
+    def __init__(self, cfg: Optional[ProbingConfig] = None):
+        self.cfg = cfg or ProbingConfig()
 
+    def propose(
+        self,
+        erfg: Any,
+        evidence: Dict[str, Any],
+        intuition: Optional[Dict[str, Any]] = None,
+    ) -> List[ProbeAction]:
+        intuition = intuition or {}
+        out: List[ProbeAction] = []
 
-def propose_probes(
-    state: ERFGState,
-    entity_uncertainty: Dict[str, float],
-    intuition: Dict[str, Dict[str, float]],
-    cfg: ProbingConfig,
-) -> List[ProbeAction]:
-    candidates: List[ProbeAction] = []
+        u_inst = evidence.get("instance_uncertainty", None)
+        u_pix = evidence.get("pixel_uncertainty", None)
 
-    for eid, u in sorted(entity_uncertainty.items(), key=lambda kv: -kv[1]):
-        if u < cfg.uncertainty_hi:
-            continue
-        risk = float(intuition.get(eid, {}).get("stability_risk", 0.0))
-        reason = f"high uncertainty ({u:.1f})" + (f", risk={risk:.2f}" if risk > 0 else "")
-        candidates.append(ProbeAction(kind="move_closer", target=eid, score=float(u), reason=reason))
-        candidates.append(ProbeAction(kind="change_viewpoint", target=eid, score=float(u * 0.9), reason="disambiguate geometry/occlusion"))
-        candidates.append(ProbeAction(kind="pan_left", target=eid, score=float(u * 0.6), reason="break occlusion"))
-        candidates.append(ProbeAction(kind="pan_right", target=eid, score=float(u * 0.6), reason="break occlusion"))
+        u = 0.0
+        if u_inst is not None:
+            try:
+                u = max(u, float(getattr(u_inst, "mean", lambda: u_inst)() if hasattr(u_inst, "mean") else float(u_inst)))
+            except Exception:
+                pass
 
-    if not candidates:
-        return [ProbeAction(kind="wait", target=None, score=0.0, reason="uncertainty below threshold")]
+        if u_pix is not None:
+            try:
+                u = max(u, float(u_pix.float().mean().item()))
+            except Exception:
+                pass
 
-    candidates.sort(key=lambda a: -a.score)
-    return candidates[: cfg.max_actions]
+        if u < self.cfg.min_uncertainty:
+            return out
+
+        out.append(
+            ProbeAction(
+                kind="camera_yaw",
+                params={"deg": float(self.cfg.yaw_deg)},
+                p=min(0.95, 0.5 + 0.5 * u),
+                utility=u,
+            )
+        )
+
+        out.append(
+            ProbeAction(
+                kind="camera_lateral",
+                params={"meters": float(self.cfg.lateral_m)},
+                p=min(0.90, 0.4 + 0.6 * u),
+                utility=u * 0.9,
+            )
+        )
+
+        out.sort(key=lambda a: a.utility, reverse=True)
+        return out[: self.cfg.max_probes]

@@ -1,32 +1,47 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict
+from typing import Any, Dict, Optional
+
+import torch
 
 
-@dataclass
+@dataclass(frozen=True)
+class RuleMemoryConfig:
+    max_rules: int = 2048
+    ema_beta: float = 0.97
+
+
 class RuleMemory:
-    path: Path
+    def __init__(self, cfg: Optional[RuleMemoryConfig] = None):
+        self.cfg = cfg or RuleMemoryConfig()
+        self.rules: Dict[str, Dict[str, Any]] = {}
 
-    def __post_init__(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.path.exists():
-            self.path.write_text(json.dumps({"env": {}, "rules": {}}, indent=2), encoding="utf-8")
+    def update(self, key: str, params: Dict[str, float]) -> None:
+        if key not in self.rules:
+            self.rules[key] = {"n": 1, "params": dict(params)}
+            self._cap()
+            return
 
-    def load(self) -> Dict:
-        return json.loads(self.path.read_text(encoding="utf-8"))
+        beta = float(self.cfg.ema_beta)
+        cur = self.rules[key]["params"]
+        for k, v in params.items():
+            v = float(v)
+            if k not in cur:
+                cur[k] = v
+            else:
+                cur[k] = beta * float(cur[k]) + (1.0 - beta) * v
+        self.rules[key]["n"] = int(self.rules[key]["n"]) + 1
+        self._cap()
 
-    def save(self, d: Dict) -> None:
-        self.path.write_text(json.dumps(d, indent=2), encoding="utf-8")
+    def get(self, key: str) -> Optional[Dict[str, float]]:
+        r = self.rules.get(key, None)
+        if r is None:
+            return None
+        return dict(r["params"])
 
-    def update_rule(self, rule: str, delta: float) -> None:
-        d = self.load()
-        rules = d.setdefault("rules", {})
-        rules[rule] = float(rules.get(rule, 0.0) + delta)
-        self.save(d)
-
-    def score(self, rule: str) -> float:
-        d = self.load()
-        return float(d.get("rules", {}).get(rule, 0.0))
+    def _cap(self) -> None:
+        if len(self.rules) <= self.cfg.max_rules:
+            return
+        items = sorted(self.rules.items(), key=lambda kv: int(kv[1].get("n", 0)), reverse=True)
+        self.rules = dict(items[: self.cfg.max_rules])

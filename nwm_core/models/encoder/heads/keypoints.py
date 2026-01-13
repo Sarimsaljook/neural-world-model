@@ -1,11 +1,9 @@
-from __future__ import annotations
-import torch
-from torch import nn
+import torch.nn as nn
 
-class KeypointsHead(nn.Module):
-    def __init__(self, in_dim: int, k: int = 21) -> None:
+class KeypointHead(nn.Module):
+    def __init__(self, dim, num_kp=21):
         super().__init__()
-        self.out = nn.Conv2d(in_dim, 2 * k, 1)
+        self.head = nn.Linear(dim, num_kp * 2)
 
-    def forward(self, feat: torch.Tensor) -> torch.Tensor:
-        return self.out(feat)
+    def forward(self, inst_feats):
+        return self.head(inst_feats).view(inst_feats.size(0), inst_feats.size(1), -1, 2)

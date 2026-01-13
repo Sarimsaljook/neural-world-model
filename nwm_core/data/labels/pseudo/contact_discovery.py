@@ -7,7 +7,7 @@ class ContactDiscovery:
     dist_thresh: float = 0.03
 
     def infer_contacts(self, positions: Dict[str, List[Tuple[float,float,float]]]) -> List[Dict[str, Any]]:
-        # positions: entity_id -> list of xyz over time
+        # positions
         keys = list(positions.keys())
         out: List[Dict[str, Any]] = []
         for i in range(len(keys)):

@@ -1,62 +1,65 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-import numpy as np
-
-from ...common.types import BBox
-
-
-def _bbox_center(b: BBox) -> np.ndarray:
-    return np.array([(b.x1 + b.x2) * 0.5, (b.y1 + b.y2) * 0.5], dtype=np.float64)
-
-
-def _bbox_wh(b: BBox) -> np.ndarray:
-    return np.array([max(1.0, b.x2 - b.x1), max(1.0, b.y2 - b.y1)], dtype=np.float64)
+import torch
 
 
 @dataclass
-class BBoxTrack:
-    track_id: int
-    bbox: BBox
-    v_xy: np.ndarray
-    age: int = 0
-    hits: int = 0
-    time_since_update: int = 0
-    pos_var: np.ndarray = None  # (2,)
-    vel_var: np.ndarray = None  # (2,)
+class Gaussian:
+    mean: torch.Tensor  # (D,)
+    cov: torch.Tensor   # (D,D)
 
-    def __post_init__(self) -> None:
-        if self.pos_var is None:
-            self.pos_var = np.array([25.0, 25.0], dtype=np.float64)  # px^2
-        if self.vel_var is None:
-            self.vel_var = np.array([16.0, 16.0], dtype=np.float64)
 
-    def predict(self, dt: float = 1.0) -> None:
-        c = _bbox_center(self.bbox)
-        c2 = c + self.v_xy * dt
-        wh = _bbox_wh(self.bbox)
-        self.bbox = BBox(c2[0] - wh[0] / 2, c2[1] - wh[1] / 2, c2[0] + wh[0] / 2, c2[1] + wh[1] / 2)
+class CVFilter:
+    def __init__(
+        self,
+        init_mean: torch.Tensor,     # (6,)
+        init_cov: torch.Tensor,      # (6,6)
+        q_pos: float = 2e-3,
+        q_vel: float = 5e-3,
+        device: torch.device | None = None,
+    ):
+        self.device = device or init_mean.device
+        self.state = Gaussian(init_mean.to(self.device), init_cov.to(self.device))
+        self.q_pos = float(q_pos)
+        self.q_vel = float(q_vel)
 
-        self.pos_var = self.pos_var + self.vel_var * (dt * dt) + 10.0
-        self.vel_var = self.vel_var + 2.0
-        self.age += 1
-        self.time_since_update += 1
+    def predict(self, dt: float) -> None:
+        dt = float(max(dt, 1e-4))
+        F = torch.eye(6, device=self.device)
+        F[0, 3] = dt
+        F[1, 4] = dt
+        F[2, 5] = dt
 
-    def update(self, meas: BBox, alpha: float = 0.75) -> None:
-        c = _bbox_center(self.bbox)
-        m = _bbox_center(meas)
-        v_new = (m - c)
-        self.v_xy = alpha * self.v_xy + (1.0 - alpha) * v_new
+        Q = torch.zeros((6, 6), device=self.device)
+        Q[0, 0] = self.q_pos
+        Q[1, 1] = self.q_pos
+        Q[2, 2] = self.q_pos
+        Q[3, 3] = self.q_vel
+        Q[4, 4] = self.q_vel
+        Q[5, 5] = self.q_vel
 
-        self.bbox = meas
-        self.hits += 1
-        self.time_since_update = 0
+        m = F @ self.state.mean
+        P = F @ self.state.cov @ F.T + Q
+        self.state = Gaussian(m, P)
 
-        # shrink uncertainty after update
-        self.pos_var = np.maximum(self.pos_var * 0.5, 4.0)
-        self.vel_var = np.maximum(self.vel_var * 0.7, 2.0)
+    def update(self, z: torch.Tensor, R: torch.Tensor) -> None:
+        # z: (3,) measurement for [cx,cy,z]
+        z = z.to(self.device)
+        R = R.to(self.device)
 
-    def uncertainty(self) -> float:
-        # scalar uncertainty for gating/probing
-        return float(np.sqrt(self.pos_var.mean()) + 0.5 * np.sqrt(self.vel_var.mean()))
+        H = torch.zeros((3, 6), device=self.device)
+        H[0, 0] = 1.0
+        H[1, 1] = 1.0
+        H[2, 2] = 1.0
+
+        m = self.state.mean
+        P = self.state.cov
+
+        y = z - (H @ m)
+        S = H @ P @ H.T + R
+        K = P @ H.T @ torch.linalg.inv(S)
+
+        m_new = m + K @ y
+        P_new = (torch.eye(6, device=self.device) - K @ H) @ P
+        self.state = Gaussian(m_new, P_new)
