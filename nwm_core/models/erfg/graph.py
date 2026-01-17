@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 from .state import GaussianState, PhysicalProperties
 from .frames import Frame
@@ -17,6 +19,8 @@ class EntityNode:
             stiffness=GaussianState(torch.tensor([1.0]), torch.tensor([[0.3]])),
         )
         self.history = []
+        self.class_id: Optional[int] = None
+        self.class_name: Optional[str] = None
 
 
 class RelationEdge:

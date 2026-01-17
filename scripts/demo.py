@@ -13,6 +13,8 @@ import torch.nn.functional as F
 
 from nwm_core.models.encoder.encoder_model import EvidenceEncoder
 from nwm_core.models.compiler import WorldCompiler, CompilerConfig
+from nwm_core.models.language.narrator import NWMNarrator, NarratorConfig
+from scripts.tts_speaker import TTSSpeaker
 
 
 def _safe_get(x: Any, k: str, default=None):
@@ -479,6 +481,10 @@ def main():
     goal_parser = mods["GoalParser"]() if mods["GoalParser"] else None
     mapper = mods["ConstraintMapper"]() if mods["ConstraintMapper"] else None
 
+    narrator = NWMNarrator(NarratorConfig())
+    speaker = TTSSpeaker(enabled=True)
+    last_utter = ""
+
     bus = _CommandBus()
     threading.Thread(target=_stdin_thread, args=(bus,), daemon=True).start()
 
@@ -487,6 +493,7 @@ def main():
         raise RuntimeError("Could not open webcam (VideoCapture(0))")
 
     cfg = VizCfg()
+    MIN_DASH_H = 900
     t_prev = time.time()
     prev: Optional[torch.Tensor] = None
     fps_ema = None
@@ -600,6 +607,18 @@ def main():
             st.last_probe = None
             st.last_constraints_score = 0.0
 
+            utter, narr_dbg = narrator.step(
+                erfg=erfg,
+                events=events,
+                intuition=intuition_out,
+                goal_text=st.goal_text,
+                cscore=st.last_constraints_score,
+            )
+
+            if utter:
+                last_utter = utter
+                speaker.say(utter)
+
             if st.mapped_goal is not None:
                 if mods["build_constraint_set"] is not None and mods["score_constraints"] is not None:
                     try:
@@ -646,7 +665,8 @@ def main():
             vis = _overlay_instances(frame, evidence, cfg)
 
             H, W = vis.shape[:2]
-            panel = _panel(cfg.panel_w, H)
+            dash_h = max(H, MIN_DASH_H)
+            panel = _panel(int(cfg.panel_w * 1.6), dash_h)
 
             _draw_title(panel, 24, "NWM Dashboard", cfg)
             _draw_kv(panel, 12, 56, "FPS", f"{fps_ema:.1f}" if fps_ema is not None else "?", cfg)
@@ -663,6 +683,19 @@ def main():
             y += 22
             _draw_kv(panel, 12, y, "CScore", f"{st.last_constraints_score:.3f}", cfg)
             y += 30
+
+            _draw_title(panel, y, "Thoughts", cfg)
+            y += 28
+            txt = last_utter if last_utter else "(no narration yet)"
+            line1 = txt[:54]
+            line2 = txt[54:108].strip()
+            cv2.putText(panel, line1, (10, y), cfg.font, 0.50, (255, 255, 255), 1, cv2.LINE_AA)
+            y += 18
+            if line2:
+                cv2.putText(panel, line2 + ("..." if len(txt) > 108 else ""), (10, y), cfg.font, 0.50, (255, 255, 255),
+                            1, cv2.LINE_AA)
+                y += 18
+            y += 12
 
             _draw_title(panel, y, "Intuition", cfg)
             y += 30
@@ -764,6 +797,18 @@ def main():
             else:
                 cv2.putText(panel, "probe:  (none)", (12, y), cfg.font, 0.48, (140, 140, 140), 1, cv2.LINE_AA)
                 y += 18
+
+            if vis.shape[0] < dash_h:
+                pad = dash_h - vis.shape[0]
+                vis = cv2.copyMakeBorder(
+                    vis,
+                    top=0,
+                    bottom=pad,
+                    left=0,
+                    right=0,
+                    borderType=cv2.BORDER_CONSTANT,
+                    value=(0, 0, 0),
+                )
 
             dash = np.concatenate([vis, panel], axis=1)
 
