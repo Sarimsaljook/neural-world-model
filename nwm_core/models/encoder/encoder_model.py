@@ -50,9 +50,30 @@ class EvidenceEncoder(nn.Module):
         inst = self.instseg(frame_t, feat_map, class_count=self.num_classes)
         depth = self.depth(feat_map)
 
+        # frame_t is the tensor you passed into instseg and that defines mask resolution
+        Ht, Wt = int(frame_t.shape[-2]), int(frame_t.shape[-1])
+
+        if isinstance(depth, torch.Tensor):
+            if depth.ndim == 3:
+                depth = depth[:, None, :, :]
+            if depth.ndim == 4 and (int(depth.shape[-2]) != Ht or int(depth.shape[-1]) != Wt):
+                depth = F.interpolate(depth, size=(Ht, Wt), mode="bilinear", align_corners=False)
+            if depth.ndim == 4 and depth.shape[1] == 1:
+                depth = depth[:, 0]
+
         if prev_frame is not None:
             prev_feat, _ = self.backbone.forward_map(prev_frame)
             flow = self.flow(feat_map, prev_feat)
+            if flow is not None:
+                Ht, Wt = int(frame_t.shape[-2]), int(frame_t.shape[-1])
+
+                # Make flow (B,2,H,W)
+                if flow.ndim == 4 and flow.shape[-1] == 2:
+                    flow = flow.permute(0, 3, 1, 2).contiguous()
+
+                # Upsample if needed
+                if flow.ndim == 4 and (int(flow.shape[-2]) != Ht or int(flow.shape[-1]) != Wt):
+                    flow = F.interpolate(flow, size=(Ht, Wt), mode="bilinear", align_corners=False)
         else:
             flow = None
 

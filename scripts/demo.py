@@ -39,25 +39,28 @@ def preprocess(frame_bgr: np.ndarray, device: torch.device) -> torch.Tensor:
 
 @dataclass
 class VizCfg:
-    topk: int = 10
-    score_thresh: float = 0.60
-    min_area_frac: float = 0.002
+    panel_w: int = 440
     alpha: float = 0.45
-    panel_w: int = 420
+    score_thresh: float = 0.60
+    topk: int = 10
+    min_area_frac: float = 0.002
     font: int = cv2.FONT_HERSHEY_SIMPLEX
 
 
-def _pick_instances(class_logits: torch.Tensor, score_thresh: float, topk: int) -> List[Tuple[int, int, float]]:
-    probs = class_logits.softmax(dim=-1)
-    obj_probs = probs[:, :-1]
-    scores, cls_ids = obj_probs.max(dim=-1)
-    keep = scores >= score_thresh
-    idx = torch.where(keep)[0]
-    if idx.numel() == 0:
-        return []
-    scored = [(int(i), int(cls_ids[i].item()), float(scores[i].item())) for i in idx]
-    scored.sort(key=lambda t: t[2], reverse=True)
-    return scored[:topk]
+def _panel(w: int, h: int) -> np.ndarray:
+    img = np.zeros((h, w, 3), dtype=np.uint8)
+    img[:] = (18, 18, 18)
+    return img
+
+
+def _draw_title(panel: np.ndarray, y: int, title: str, cfg: VizCfg):
+    cv2.putText(panel, title, (12, y), cfg.font, 0.64, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.line(panel, (12, y + 7), (panel.shape[1] - 12, y + 7), (70, 70, 70), 1)
+
+
+def _draw_kv(panel: np.ndarray, x: int, y: int, k: str, v: str, cfg: VizCfg, scale: float = 0.54):
+    cv2.putText(panel, k, (x, y), cfg.font, scale, (175, 175, 175), 1, cv2.LINE_AA)
+    cv2.putText(panel, v, (x + 170, y), cfg.font, scale, (255, 255, 255), 1, cv2.LINE_AA)
 
 
 def _mask_to_frame(mask_patch: torch.Tensor, meta, resized_hw: Tuple[int, int]) -> torch.Tensor:
@@ -67,18 +70,45 @@ def _mask_to_frame(mask_patch: torch.Tensor, meta, resized_hw: Tuple[int, int]) 
     return mask_orig
 
 
-def _overlay_instances(frame_bgr: np.ndarray, out: dict, cfg: VizCfg) -> np.ndarray:
-    inst = out["instances"]
+def _pick_instances_from_inst(inst: Dict[str, torch.Tensor], cfg: VizCfg) -> List[Tuple[int, int, float]]:
     class_logits = inst["class_logits"][0]
-    mask_logits = inst["mask_logits"][0]
-    meta = out["pad_meta"]
+    probs = class_logits.softmax(dim=-1)
+    obj_probs = probs[:, :-1]
+    scores, cls_ids = obj_probs.max(dim=-1)
 
+    valid = inst.get("valid", None)
+    if valid is not None:
+        v = valid[0].bool()
+        scores = scores * v.float()
+
+    keep = scores >= cfg.score_thresh
+    idx = torch.where(keep)[0]
+    if idx.numel() == 0:
+        return []
+
+    scored = [(int(i), int(cls_ids[i].item()), float(scores[i].item())) for i in idx]
+    scored.sort(key=lambda t: t[2], reverse=True)
+    return scored[: cfg.topk]
+
+
+def _overlay_instances(frame_bgr: np.ndarray, evidence: dict, cfg: VizCfg) -> np.ndarray:
+    if "instances" not in evidence or "pad_meta" not in evidence:
+        return frame_bgr
+
+    inst = evidence["instances"]
+    if "class_logits" not in inst or "mask_logits" not in inst:
+        return frame_bgr
+
+    meta = evidence["pad_meta"]
     H0, W0 = meta.orig_hw
     min_area = int(cfg.min_area_frac * (H0 * W0))
 
-    picks = _pick_instances(class_logits, cfg.score_thresh, cfg.topk)
+    picks = _pick_instances_from_inst(inst, cfg)
     if not picks:
         return frame_bgr
+
+    class_logits = inst["class_logits"][0]
+    mask_logits = inst["mask_logits"][0]
 
     overlay = frame_bgr.copy()
 
@@ -121,22 +151,6 @@ def _overlay_instances(frame_bgr: np.ndarray, out: dict, cfg: VizCfg) -> np.ndar
     return overlay
 
 
-def _panel(w: int, h: int) -> np.ndarray:
-    img = np.zeros((h, w, 3), dtype=np.uint8)
-    img[:] = (20, 20, 20)
-    return img
-
-
-def _draw_kv(panel: np.ndarray, x: int, y: int, k: str, v: str, cfg: VizCfg, scale: float = 0.55):
-    cv2.putText(panel, k, (x, y), cfg.font, scale, (180, 180, 180), 1, cv2.LINE_AA)
-    cv2.putText(panel, v, (x + 140, y), cfg.font, scale, (255, 255, 255), 1, cv2.LINE_AA)
-
-
-def _draw_title(panel: np.ndarray, y: int, title: str, cfg: VizCfg):
-    cv2.putText(panel, title, (10, y), cfg.font, 0.62, (255, 255, 255), 2, cv2.LINE_AA)
-    cv2.line(panel, (10, y + 6), (panel.shape[1] - 10, y + 6), (70, 70, 70), 1)
-
-
 def _entity_iter(erfg: Any) -> List[Any]:
     ents = _safe_get(erfg, "entities", None)
     if ents is None:
@@ -149,10 +163,6 @@ def _entity_iter(erfg: Any) -> List[Any]:
         return list(ents)
     except Exception:
         return []
-
-
-def _event_iter(events: Any) -> List[Any]:
-    return _as_list(events)
 
 
 def _fmt_entity(e: Any) -> Tuple[str, str, str]:
@@ -294,6 +304,141 @@ def _try_import_modules() -> Dict[str, Any]:
     return out
 
 
+def _deterministic_intuition(erfg: Any, evidence: dict, events: List[Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {
+        "risk": {},
+        "slip": {},
+        "stability": {},
+        "collision_pairs": [],
+        "belief_summary": [],
+        "next_event": None,
+    }
+
+    def _depth_to_mask_hw(depth: torch.Tensor, H: int, W: int) -> torch.Tensor:
+        # depth can be (H,W) or (1,H,W) or (B,1,H,W)
+        if depth is None:
+            return None
+        if depth.ndim == 2:
+            d = depth[None, None]
+        elif depth.ndim == 3:
+            d = depth[None] if depth.shape[0] != 1 else depth[:, None]
+        elif depth.ndim == 4:
+            d = depth
+        else:
+            return depth
+
+        if int(d.shape[-2]) == int(H) and int(d.shape[-1]) == int(W):
+            return d[0, 0]
+
+        d_rs = F.interpolate(d, size=(H, W), mode="bilinear", align_corners=False)
+        return d_rs[0, 0]
+
+    inst = evidence.get("instances", None)
+    depth = evidence.get("depth", None)
+    flow = evidence.get("flow", None)
+
+    if inst is None or "mask_logits" not in inst or "class_logits" not in inst:
+        return out
+
+    device = inst["mask_logits"].device
+    mask_logits = inst["mask_logits"][0]
+    class_logits = inst["class_logits"][0]
+    probs = class_logits.softmax(dim=-1)
+    obj_probs = probs[:, :-1]
+    scores, cls_ids = obj_probs.max(dim=-1)
+
+    Q = int(mask_logits.shape[0])
+
+    flow_mag = None
+    if isinstance(flow, torch.Tensor):
+        f = flow[0]
+        if f.ndim == 3 and f.shape[0] == 2:
+            flow_mag = torch.sqrt((f[0] ** 2 + f[1] ** 2).clamp(min=1e-12))
+
+    for q in range(min(Q, 40)):
+        sc = float(scores[q].item())
+        if sc < 0.45:
+            continue
+
+        m = (torch.sigmoid(mask_logits[q]) > 0.5)
+        area = float(m.float().sum().item())
+
+        if area <= 50:
+            continue
+
+        slip = 0.0
+        if flow_mag is not None:
+            mm = flow_mag[m]
+            if mm.numel() > 0:
+                slip = float(mm.mean().item())
+                slip = max(0.0, min(1.0, slip / 8.0))
+
+        unstable = 0.0
+        if depth is not None and isinstance(depth, torch.Tensor):
+            d = depth[0]
+            # m is (H,W) boolean mask tensor for this entity
+            H, W = int(m.shape[0]), int(m.shape[1])
+
+            d = evidence.get("depth", None)
+            if isinstance(d, torch.Tensor):
+                d0 = d[0] if d.ndim >= 3 else d
+                d0 = _depth_to_mask_hw(d0, H, W)
+            else:
+                d0 = None
+
+            if d0 is None:
+                dm = None
+            else:
+                dm = d0[m]
+            if dm.numel() > 0:
+                dv = float(dm.std().item())
+                unstable = max(0.0, min(1.0, dv / 0.35))
+
+        risk = max(0.15 * (1.0 - sc), 0.55 * slip, 0.55 * unstable)
+
+        out["slip"][int(q)] = float(slip)
+        out["stability"][int(q)] = float(unstable)
+        out["risk"][int(q)] = float(risk)
+
+    picks = torch.where(scores >= 0.55)[0]
+    picks = picks[:18]
+    if picks.numel() >= 2:
+        masks = (torch.sigmoid(mask_logits[picks]) > 0.5)
+        for i in range(int(picks.numel())):
+            for j in range(i + 1, int(picks.numel())):
+                a = masks[i]
+                b = masks[j]
+                inter = float((a & b).float().sum().item())
+                if inter <= 0.0:
+                    continue
+                ua = float(a.float().sum().item())
+                ub = float(b.float().sum().item())
+                iou = inter / max(1.0, (ua + ub - inter))
+                p = max(0.0, min(1.0, iou * 2.0))
+                if p >= 0.25:
+                    out["collision_pairs"].append({"a": int(picks[i].item()), "b": int(picks[j].item()), "p": float(p)})
+
+    ev_counts: Dict[str, int] = {}
+    for ev in events[-20:]:
+        k = _safe_get(ev, "kind", "")
+        if not k:
+            continue
+        ev_counts[k] = ev_counts.get(k, 0) + 1
+
+    if ev_counts:
+        topk = sorted(ev_counts.items(), key=lambda kv: kv[1], reverse=True)[:3]
+        out["belief_summary"] = [f"{k} x{v}" for k, v in topk]
+
+    if len(out["collision_pairs"]) > 0:
+        best = max(out["collision_pairs"], key=lambda d: float(d.get("p", 0.0)))
+        out["next_event"] = f"collision_risk {best['a']}->{best['b']} p={best['p']:.2f}"
+    elif len(out["risk"]) > 0:
+        q_best = max(out["risk"].items(), key=lambda kv: float(kv[1]))[0]
+        out["next_event"] = f"high_risk entity={q_best} p={out['risk'][q_best]:.2f}"
+
+    return out
+
+
 @dataclass
 class LiveState:
     goal_text: str = ""
@@ -314,13 +459,18 @@ def main():
     mech_router = mods["MechanismRouter"]() if mods["MechanismRouter"] else None
     mech_exec = mods["MechanismExecutor"]() if mods["MechanismExecutor"] else None
 
-    intuition = mods["IntuitionFields"]() if mods["IntuitionFields"] else None
+    intuition_mod = mods["IntuitionFields"]() if mods["IntuitionFields"] else None
 
     episodic = mods["EpisodicMemory"]() if mods["EpisodicMemory"] else None
     semantic = mods["SemanticMemory"]() if mods["SemanticMemory"] else None
     spatial = mods["SpatialMemory"]() if mods["SpatialMemory"] else None
     rulemem = mods["RuleMemory"]() if mods["RuleMemory"] else None
-    consolidator = mods["MemoryConsolidator"]() if mods["MemoryConsolidator"] else None
+    mc = mods.get("MemoryConsolidator", None)
+
+    if callable(mc) and episodic and semantic and spatial and rulemem:
+        consolidator = mc(episodic, semantic, spatial, rulemem)
+    else:
+        consolidator = None
 
     mpc = mods["MicroMPC"]() if mods["MicroMPC"] else None
     prober = mods["ProbingPolicy"]() if mods["ProbingPolicy"] else None
@@ -340,13 +490,13 @@ def main():
     t_prev = time.time()
     prev: Optional[torch.Tensor] = None
     fps_ema = None
-
     st = LiveState()
 
-    print("NWM Live Demo")
-    print("Type a goal into the console and press Enter (examples):")
-    print("  place the cup on the table within 3 seconds risk <= 20%")
+    print("NWM Live Showcase")
+    print("Type a goal into the console and press Enter:")
+    print("  place the phone on the table within 3 seconds risk <= 20%")
     print("  avoid contact with the phone")
+    print("  keep the cup stable and avoid collision")
     print("Press 'q' in the window to quit.")
 
     with torch.no_grad():
@@ -374,20 +524,20 @@ def main():
 
             world = compiler.step(evidence, dt)
             erfg = world["erfg"]
-            events = _event_iter(world["events"])
+            events = _as_list(world.get("events", []))
 
             mech_active = None
             mech_out_events: List[Any] = []
             if mech_router is not None and mech_exec is not None:
                 try:
-                    mech_active = mech_router.route(erfg, events, evidence)  # expected: list/dict
+                    mech_active = mech_router.route(erfg, events, evidence)
                 except Exception:
                     mech_active = None
                 try:
                     mres = mech_exec.step(erfg, mech_active, dt, evidence=evidence)
                     if isinstance(mres, dict):
                         erfg = mres.get("erfg", erfg)
-                        mech_out_events = _event_iter(mres.get("events", []))
+                        mech_out_events = _as_list(mres.get("events", []))
                 except Exception:
                     pass
 
@@ -395,13 +545,25 @@ def main():
                 events = events + mech_out_events
 
             intuition_out: Dict[str, Any] = {}
-            if intuition is not None:
+            if intuition_mod is not None:
                 try:
-                    intuition_out = intuition.step(erfg, dt, events=events, evidence=evidence)
+                    intuition_out = intuition_mod.step(erfg, dt, events=events, evidence=evidence)
                     if intuition_out is None:
                         intuition_out = {}
                 except Exception:
                     intuition_out = {}
+
+            det_intuition = _deterministic_intuition(erfg, evidence, events)
+            if not intuition_out:
+                intuition_out = det_intuition
+            else:
+                for k in ["risk", "slip", "stability", "collision_pairs"]:
+                    if k not in intuition_out or intuition_out[k] is None:
+                        intuition_out[k] = det_intuition.get(k, {})
+                if "belief_summary" not in intuition_out:
+                    intuition_out["belief_summary"] = det_intuition.get("belief_summary", [])
+                if "next_event" not in intuition_out:
+                    intuition_out["next_event"] = det_intuition.get("next_event", None)
 
             if episodic is not None:
                 try:
@@ -487,24 +649,24 @@ def main():
             panel = _panel(cfg.panel_w, H)
 
             _draw_title(panel, 24, "NWM Dashboard", cfg)
-            _draw_kv(panel, 10, 52, "FPS", f"{fps_ema:.1f}" if fps_ema is not None else "?", cfg)
-            _draw_kv(panel, 10, 74, "Time", f"{float(_safe_get(erfg, 'time', 0.0)):.2f}s", cfg)
-            _draw_kv(panel, 10, 96, "Entities", str(len(_entity_iter(erfg))), cfg)
-            _draw_kv(panel, 10, 118, "Events", str(len(events)), cfg)
+            _draw_kv(panel, 12, 56, "FPS", f"{fps_ema:.1f}" if fps_ema is not None else "?", cfg)
+            _draw_kv(panel, 12, 78, "Time", f"{float(_safe_get(erfg, 'time', 0.0)):.2f}s", cfg)
+            _draw_kv(panel, 12, 100, "Entities", str(len(_entity_iter(erfg))), cfg)
+            _draw_kv(panel, 12, 122, "Events", str(len(events)), cfg)
 
-            y = 150
+            y = 154
             _draw_title(panel, y, "Goal", cfg)
-            y += 28
-            gt = st.goal_text if st.goal_text else "(type into console)"
-            gt = gt[:52] + ("..." if len(gt) > 52 else "")
-            cv2.putText(panel, gt, (10, y), cfg.font, 0.52, (255, 255, 255), 1, cv2.LINE_AA)
+            y += 30
+            gt = st.goal_text if st.goal_text else "(type goal in console)"
+            gt = gt[:56] + ("..." if len(gt) > 56 else "")
+            cv2.putText(panel, gt, (12, y), cfg.font, 0.52, (255, 255, 255), 1, cv2.LINE_AA)
             y += 22
-            _draw_kv(panel, 10, y, "CScore", f"{st.last_constraints_score:.3f}", cfg)
-            y += 28
+            _draw_kv(panel, 12, y, "CScore", f"{st.last_constraints_score:.3f}", cfg)
+            y += 30
 
             _draw_title(panel, y, "Intuition", cfg)
-            y += 28
-            risk = intuition_out.get("risk", intuition_out.get("risk_map", {})) or {}
+            y += 30
+            risk = intuition_out.get("risk", {}) or {}
             stab = intuition_out.get("stability", {}) or {}
             slip = intuition_out.get("slip", {}) or {}
             col = intuition_out.get("collision_pairs", []) or []
@@ -527,73 +689,80 @@ def main():
                 for p in col:
                     if isinstance(p, dict):
                         col_max = max(col_max, float(p.get("p", 0.0)))
-                    elif isinstance(p, (list, tuple)) and len(p) >= 3:
-                        try:
-                            col_max = max(col_max, float(p[2]))
-                        except Exception:
-                            pass
 
-            _draw_kv(panel, 10, y, "RiskMax", f"{max_risk:.2f}", cfg)
+            _draw_kv(panel, 12, y, "RiskMax", f"{max_risk:.2f}", cfg)
             y += 22
-            _draw_kv(panel, 10, y, "SlipMax", f"{max_slip:.2f}", cfg)
+            _draw_kv(panel, 12, y, "SlipMax", f"{max_slip:.2f}", cfg)
             y += 22
-            _draw_kv(panel, 10, y, "Unstable", f"{max_unstable:.2f}", cfg)
+            _draw_kv(panel, 12, y, "Unstable", f"{max_unstable:.2f}", cfg)
             y += 22
-            _draw_kv(panel, 10, y, "Collide", f"{col_max:.2f}", cfg)
+            _draw_kv(panel, 12, y, "Collide", f"{col_max:.2f}", cfg)
             y += 30
 
+            _draw_title(panel, y, "Belief Summary", cfg)
+            y += 30
+            bs = intuition_out.get("belief_summary", []) or []
+            if bs:
+                for s in bs[:3]:
+                    cv2.putText(panel, str(s)[:56], (12, y), cfg.font, 0.50, (230, 230, 230), 1, cv2.LINE_AA)
+                    y += 18
+            else:
+                cv2.putText(panel, "(no summary yet)", (12, y), cfg.font, 0.50, (140, 140, 140), 1, cv2.LINE_AA)
+                y += 18
+
+            ne = intuition_out.get("next_event", None)
+            if ne:
+                cv2.putText(panel, ("next: " + str(ne))[:56], (12, y), cfg.font, 0.50, (255, 255, 255), 1, cv2.LINE_AA)
+                y += 20
+            else:
+                y += 10
+
             _draw_title(panel, y, "Top Entities", cfg)
-            y += 28
+            y += 30
             ents = _entity_iter(erfg)
             for e in ents[:6]:
                 eid, cls, conf = _fmt_entity(e)
-                cv2.putText(panel, f"#{eid}  {cls}  p={conf}", (10, y), cfg.font, 0.52, (255, 255, 255), 1, cv2.LINE_AA)
-                y += 18
-            y += 14
-
-            _draw_title(panel, y, "Recent Events", cfg)
-            y += 28
-            for ev in events[-6:]:
-                s = _fmt_event(ev)
-                s = s[:54] + ("..." if len(s) > 54 else "")
-                cv2.putText(panel, s, (10, y), cfg.font, 0.50, (220, 220, 220), 1, cv2.LINE_AA)
-                y += 18
-            y += 14
-
-            _draw_title(panel, y, "Plan", cfg)
-            y += 28
-            if st.last_program_text:
-                lines = st.last_program_text.splitlines()[:6]
-                for ln in lines:
-                    ln = ln[:54] + ("..." if len(ln) > 54 else "")
-                    cv2.putText(panel, ln, (10, y), cfg.font, 0.48, (255, 255, 255), 1, cv2.LINE_AA)
-                    y += 16
-            else:
-                cv2.putText(panel, "(no program)", (10, y), cfg.font, 0.50, (150, 150, 150), 1, cv2.LINE_AA)
+                cv2.putText(panel, f"#{eid}  {cls}  p={conf}", (12, y), cfg.font, 0.52, (255, 255, 255), 1, cv2.LINE_AA)
                 y += 18
             y += 10
 
-            _draw_title(panel, y, "Action / Probe", cfg)
-            y += 28
+            _draw_title(panel, y, "Recent Events", cfg)
+            y += 30
+            for ev in events[-6:]:
+                s = _fmt_event(ev)
+                s = s[:56] + ("..." if len(s) > 56 else "")
+                cv2.putText(panel, s, (12, y), cfg.font, 0.50, (220, 220, 220), 1, cv2.LINE_AA)
+                y += 18
+            y += 10
+
+            _draw_title(panel, y, "Plan / Action / Probe", cfg)
+            y += 30
+            if st.last_program_text:
+                lines = st.last_program_text.splitlines()[:4]
+                for ln in lines:
+                    ln = ln[:56] + ("..." if len(ln) > 56 else "")
+                    cv2.putText(panel, ln, (12, y), cfg.font, 0.48, (255, 255, 255), 1, cv2.LINE_AA)
+                    y += 16
+            else:
+                cv2.putText(panel, "(no program)", (12, y), cfg.font, 0.50, (140, 140, 140), 1, cv2.LINE_AA)
+                y += 18
+
             a = st.last_action or {}
             p = st.last_probe or {}
-
             if a:
-                s = str(a)
-                s = s[:54] + ("..." if len(s) > 54 else "")
-                cv2.putText(panel, "action: " + s, (10, y), cfg.font, 0.48, (230, 230, 230), 1, cv2.LINE_AA)
+                s = ("action: " + str(a))[:56]
+                cv2.putText(panel, s, (12, y), cfg.font, 0.48, (230, 230, 230), 1, cv2.LINE_AA)
                 y += 18
             else:
-                cv2.putText(panel, "action: (none)", (10, y), cfg.font, 0.48, (150, 150, 150), 1, cv2.LINE_AA)
+                cv2.putText(panel, "action: (none)", (12, y), cfg.font, 0.48, (140, 140, 140), 1, cv2.LINE_AA)
                 y += 18
 
             if p:
-                s = str(p)
-                s = s[:54] + ("..." if len(s) > 54 else "")
-                cv2.putText(panel, "probe:  " + s, (10, y), cfg.font, 0.48, (230, 230, 230), 1, cv2.LINE_AA)
+                s = ("probe:  " + str(p))[:56]
+                cv2.putText(panel, s, (12, y), cfg.font, 0.48, (230, 230, 230), 1, cv2.LINE_AA)
                 y += 18
             else:
-                cv2.putText(panel, "probe:  (none)", (10, y), cfg.font, 0.48, (150, 150, 150), 1, cv2.LINE_AA)
+                cv2.putText(panel, "probe:  (none)", (12, y), cfg.font, 0.48, (140, 140, 140), 1, cv2.LINE_AA)
                 y += 18
 
             dash = np.concatenate([vis, panel], axis=1)
