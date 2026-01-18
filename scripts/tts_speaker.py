@@ -28,7 +28,6 @@ class TTSSpeaker:
         text = (text or "").strip()
         if not text:
             return
-        # drop backlog: keep only latest utterance
         while True:
             try:
                 _ = self._q.get_nowait()

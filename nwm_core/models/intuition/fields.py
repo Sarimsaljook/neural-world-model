@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from .heads import IntuitionHeads, IntuitionHeadsConfig
 
@@ -180,11 +179,6 @@ def _heuristic_fields(det: Dict[str, torch.Tensor], cfg: IntuitionConfig) -> Dic
 
 
 class IntuitionFields(nn.Module):
-    """
-    Drop-in runtime module.
-    - Inference-only: uses heuristics (depth+mask+box+conf).
-    - Train-ready: enable learned heads and blend with heuristics.
-    """
 
     def __init__(self, cfg: Optional[IntuitionConfig] = None, heads_cfg: Optional[IntuitionHeadsConfig] = None):
         super().__init__()

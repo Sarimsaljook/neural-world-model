@@ -1,4 +1,3 @@
-import torch
 import json
 
 def serialize_erfg(erfg):

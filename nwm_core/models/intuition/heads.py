@@ -37,11 +37,6 @@ class _MLP(nn.Module):
 
 
 class IntuitionHeads(nn.Module):
-    """
-    Train-ready multi-head predictors.
-    Inputs are per-entity feature vectors (B,N,F) or (N,F).
-    Outputs are logits unless otherwise specified.
-    """
 
     def __init__(self, cfg: Optional[IntuitionHeadsConfig] = None):
         super().__init__()

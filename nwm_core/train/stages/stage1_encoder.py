@@ -6,8 +6,6 @@ from ...common.logging import get_logger
 log = get_logger("nwm.train.stage1_encoder")
 
 def run(cfg: Dict[str, Any]) -> None:
-    # Fully wired training loops get added after you lock model implementations.
-    # This stage runner is compatibility-ready: it validates config keys and exits cleanly.
     train = cfg.get("train", {})
     max_steps = int(train.get("max_steps", 0))
     if max_steps <= 0:

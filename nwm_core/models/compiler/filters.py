@@ -6,15 +6,15 @@ import torch
 
 @dataclass
 class Gaussian:
-    mean: torch.Tensor  # (D,)
-    cov: torch.Tensor   # (D,D)
+    mean: torch.Tensor
+    cov: torch.Tensor
 
 
 class CVFilter:
     def __init__(
         self,
-        init_mean: torch.Tensor,     # (6,)
-        init_cov: torch.Tensor,      # (6,6)
+        init_mean: torch.Tensor,
+        init_cov: torch.Tensor,
         q_pos: float = 2e-3,
         q_vel: float = 5e-3,
         device: torch.device | None = None,
@@ -44,7 +44,6 @@ class CVFilter:
         self.state = Gaussian(m, P)
 
     def update(self, z: torch.Tensor, R: torch.Tensor) -> None:
-        # z: (3,) measurement for [cx,cy,z]
         z = z.to(self.device)
         R = R.to(self.device)
 

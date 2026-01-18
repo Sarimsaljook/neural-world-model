@@ -317,7 +317,6 @@ def _deterministic_intuition(erfg: Any, evidence: dict, events: List[Any]) -> Di
     }
 
     def _depth_to_mask_hw(depth: torch.Tensor, H: int, W: int) -> torch.Tensor:
-        # depth can be (H,W) or (1,H,W) or (B,1,H,W)
         if depth is None:
             return None
         if depth.ndim == 2:
@@ -378,7 +377,6 @@ def _deterministic_intuition(erfg: Any, evidence: dict, events: List[Any]) -> Di
         unstable = 0.0
         if depth is not None and isinstance(depth, torch.Tensor):
             d = depth[0]
-            # m is (H,W) boolean mask tensor for this entity
             H, W = int(m.shape[0]), int(m.shape[1])
 
             d = evidence.get("depth", None)

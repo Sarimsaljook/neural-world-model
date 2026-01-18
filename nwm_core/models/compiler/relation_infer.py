@@ -6,10 +6,7 @@ from typing import Dict, Tuple, List, Optional
 import torch
 
 def cxcywh_to_xyxy(boxes_cxcywh: torch.Tensor) -> torch.Tensor:
-    """
-    boxes_cxcywh: (...,4) normalized cx,cy,w,h in [0,1]
-    returns (...,4) normalized x1,y1,x2,y2 in [0,1]
-    """
+
     cx, cy, w, h = boxes_cxcywh.unbind(-1)
     x1 = cx - 0.5 * w
     y1 = cy - 0.5 * h

@@ -20,7 +20,6 @@ def main() -> None:
     if not stage:
         raise ValueError("Config missing `stage`")
 
-    # stage modules are import-light; wire here
     if stage == "stage1_encoder":
         from .stages.stage1_encoder import run
     elif stage == "stage2_compiler":

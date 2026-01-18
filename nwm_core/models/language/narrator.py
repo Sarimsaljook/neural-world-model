@@ -94,7 +94,6 @@ class NarratorConfig:
     min_interval_s: float = 1.1
     max_sentences: int = 3
 
-    # Speak triggers
     say_on_events: bool = True
     say_on_goal: bool = True
     say_on_risk: bool = True
@@ -106,19 +105,10 @@ class NarratorConfig:
 
     cscore_delta_say: float = 0.12
 
-    # Style
     natural: bool = True
 
 
 class NWMNarrator:
-    """
-    Natural narrator that stays grounded:
-    - entity naming (class labels instead of raw ids)
-    - event meaning
-    - belief summary
-    - risk + recommendation
-    - goal progress commentary
-    """
 
     def __init__(self, cfg: Optional[NarratorConfig] = None):
         self.cfg = cfg or NarratorConfig()
@@ -133,10 +123,6 @@ class NWMNarrator:
         self._last_scene_hash: Optional[str] = None
         self._scene_cooldown: float = 0.0
 
-    # ---------------------------
-    # Naming + grounding helpers
-    # ---------------------------
-
     def _entity_id(self, e: Any) -> Optional[int]:
         v = _safe_get(e, "id", _safe_get(e, "entity_id", None))
         try:
@@ -145,7 +131,6 @@ class NWMNarrator:
             return None
 
     def _entity_label(self, e: Any) -> str:
-        # 1) explicit label/name if present
         lbl = _safe_get(e, "label", None)
         if isinstance(lbl, str) and lbl.strip():
             return lbl.strip()
@@ -154,17 +139,14 @@ class NWMNarrator:
         if isinstance(cn, str) and cn.strip():
             return cn.strip()
 
-        # 2) use type_dist if it's a tensor/logits/probs
         td = _safe_get(e, "type_dist", None)
         try:
             import torch
             if isinstance(td, torch.Tensor):
                 t = td.detach()
-                # allow shapes like (K,) or (1,K)
                 if t.ndim == 2 and t.shape[0] == 1:
                     t = t[0]
                 if t.ndim == 1 and t.numel() > 0:
-                    # if these are logits, softmax is fine; if probs already, softmax won't break too badly
                     p = torch.softmax(t.float(), dim=-1)
                     cls = int(torch.argmax(p).item())
                     conf = float(p[cls].item())
@@ -174,7 +156,6 @@ class NWMNarrator:
         except Exception:
             pass
 
-        # 3) fallback to "type" if exists
         t = _safe_get(e, "type", None)
         if isinstance(t, str) and t.strip():
             return t.strip()
@@ -217,7 +198,7 @@ class NWMNarrator:
         a = self._name(erfg, src) if src is not None else "something"
         b = self._name(erfg, dst) if dst is not None else "something"
 
-        # Map your canonical event kinds to natural language
+        # Map canonical event kinds to natural language
         if kind.endswith("contact_begin"):
             return f"{a} touched {b}{pp}"
         if kind.endswith("contact_end"):
@@ -235,20 +216,15 @@ class NWMNarrator:
         if kind.endswith("support_end"):
             return f"{b} is no longer supporting {a}{pp}"
 
-        # fallback
         return f"event {kind}: {a} -> {b}{pp}"
 
     def _scene_signature(self, erfg: Any) -> str:
-        # lightweight hash: top labels + count
+        # hash top labels and count
         ents = _entity_iter(erfg)
         labs = []
         for e in ents[:6]:
             labs.append(self._entity_label(e))
         return f"{len(ents)}|" + ",".join(labs)
-
-    # ---------------------------
-    # Recommendations (grounded)
-    # ---------------------------
 
     def _recommendation(self, erfg: Any, intuition: Dict[str, Any]) -> Optional[str]:
         risk = intuition.get("risk", intuition.get("risk_map", {})) or {}
@@ -263,7 +239,7 @@ class NWMNarrator:
         if risk_max < 0.25 and unstable_max < 0.35 and slip_max < 0.25:
             return None
 
-        # Identify the most concerning entity (if dict keyed by entity id)
+        # most concerning entities
         top_r = _topk_dict(risk, 1)
         top_u = _topk_dict(stab, 1)
         top_s = _topk_dict(slip, 1)
@@ -279,7 +255,6 @@ class NWMNarrator:
         if top_s and top_s[0][1] >= 0.35:
             parts.append(f"reduce slip around {self._name(erfg, top_s[0][0])}")
 
-        # collision pairs format varies; keep it robust
         col_max = 0.0
         for p in cols if isinstance(cols, list) else []:
             if isinstance(p, dict):
@@ -302,10 +277,6 @@ class NWMNarrator:
         if self.cfg.natural:
             return "Recommendation: " + ", ".join(parts) + "."
         return "Reco: " + ", ".join(parts) + "."
-
-    # ---------------------------
-    # Main step
-    # ---------------------------
 
     def step(
         self,
@@ -354,7 +325,7 @@ class NWMNarrator:
             if abs(float(cscore) - float(self._last_cscore)) >= self.cfg.cscore_delta_say:
                 cscore_changed = True
 
-        # occasional scene summary (not spammy)
+        # scene summary
         scene_sig = self._scene_signature(erfg)
         scene_changed = scene_sig != self._last_scene_hash
         can_scene = now >= self._scene_cooldown
@@ -384,11 +355,9 @@ class NWMNarrator:
 
         sents: List[str] = []
 
-        # 1) scene summary occasionally
         if scene_changed and can_scene:
             ents = _entity_iter(erfg)
             if ents:
-                # grab a few top-names
                 names = []
                 for e in ents[:3]:
                     eid = self._entity_id(e)
@@ -401,16 +370,16 @@ class NWMNarrator:
                     else:
                         sents.append(f"Tracking {len(ents)} entities: {', '.join(names)}.")
             self._last_scene_hash = scene_sig
-            self._scene_cooldown = now + 4.0  # only re-summarize every few seconds
+            self._scene_cooldown = now + 4.0
 
-        # 2) event in english
+        # event in english
         if event_changed and ev_english:
             if self.cfg.natural:
                 sents.append(f"I noticed: {ev_english}.")
             else:
                 sents.append(f"Event: {ev_english}.")
 
-        # 3) intuition: interpret as meaning, not just numbers
+        # interpret as meaning
         if risk_changed:
             sents.append(f"Overall risk is {_human_level(risk_max)} ({risk_max:.2f}).")
         if unstable_changed:
@@ -418,16 +387,14 @@ class NWMNarrator:
         if slip_changed:
             sents.append(f"Slip risk is {_human_level(slip_max)} ({slip_max:.2f}).")
 
-        # 4) goal progress
+        # goal progress
         if should_goal:
-            # Keep this grounded: only mention score, not “done”
             sents.append(f"Goal progress changed. Constraint score is now {float(cscore):.2f}.")
 
-        # 5) recommendation (grounded from intuition)
+        # recommendation from intuition
         if reco is not None:
             sents.append(reco)
 
-        # Trim + finalize
         sents = [s.strip() for s in sents if s.strip()]
         if not sents:
             sents = ["I updated my belief state."]

@@ -60,15 +60,14 @@ class WorldCompiler:
 
     @staticmethod
     def _mask_probs(mask_logits: torch.Tensor, out_h: int, out_w: int) -> torch.Tensor:
-        # mask_logits: (Q,h,w)
-        probs = torch.sigmoid(mask_logits.unsqueeze(0))  # (1,Q,h,w)
+        # mask logits
+        probs = torch.sigmoid(mask_logits.unsqueeze(0))
         probs = F.interpolate(probs, size=(out_h, out_w), mode="bilinear", align_corners=False)
-        return probs.squeeze(0)  # (Q,H,W)
+        return probs.squeeze(0)
 
     def _extract_detections(self, evidence: Dict) -> Dict[str, torch.Tensor]:
         inst = evidence["instances"]
 
-        # masks (Q,h,w) probabilities
         if "masks" in inst:
             masks = inst["masks"][0].to(self.device)
         elif "mask_logits" in inst:
@@ -76,12 +75,12 @@ class WorldCompiler:
         else:
             raise KeyError("instances must contain 'masks' or 'mask_logits'")
 
-        # class logits (Q,K+1)
+        # class logits
         if "class_logits" not in inst:
             raise KeyError("instances must contain 'class_logits'")
         logits = inst["class_logits"][0].to(self.device)
 
-        # query embeddings (Q,D)
+        # query embeddings
         if "query_feats" in inst:
             embs = inst["query_feats"][0].to(self.device)
         elif "embeddings" in inst:
@@ -90,35 +89,28 @@ class WorldCompiler:
             raise KeyError("instances must contain 'query_feats' or 'embeddings'")
         embs = F.normalize(embs, dim=-1)
 
-        # depth (H,W) float
         if "depth" not in evidence:
             raise KeyError("evidence must contain 'depth'")
         depth_t = evidence["depth"][0].to(self.device)
         if depth_t.ndim == 3:
-            # (1,H,W) -> (H,W)
             depth_t = depth_t.squeeze(0)
         elif depth_t.ndim == 4:
-            # (1,1,H,W) -> (H,W)
             depth_t = depth_t.squeeze(0).squeeze(0)
         depth = depth_t
 
-        # Determine target H,W
         meta = evidence.get("meta", None)
         if meta is not None:
             H, W = int(meta.orig_hw[0]), int(meta.orig_hw[1])
         else:
             H, W = int(depth.shape[-2]), int(depth.shape[-1])
 
-        # Upsample masks to (H,W) if needed
         mh, mw = int(masks.shape[-2]), int(masks.shape[-1])
         if (mh, mw) != (H, W):
             masks = F.interpolate(masks.unsqueeze(1), size=(H, W), mode="bilinear", align_corners=False).squeeze(1)
 
-        # Upsample depth to (H,W) if needed
         dh, dw = int(depth.shape[-2]), int(depth.shape[-1])
         if (dh, dw) != (H, W):
-            depth = F.interpolate(depth.unsqueeze(0).unsqueeze(0), size=(H, W), mode="bilinear",
-                                  align_corners=False).squeeze(0).squeeze(0)
+            depth = F.interpolate(depth.unsqueeze(0).unsqueeze(0), size=(H, W), mode="bilinear", align_corners=False).squeeze(0).squeeze(0)
 
         probs = torch.softmax(logits, dim=-1)
         if probs.shape[-1] > 1:

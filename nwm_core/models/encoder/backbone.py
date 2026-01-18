@@ -11,12 +11,12 @@ import torch.nn.functional as F
 
 @dataclass(frozen=True)
 class PadMeta:
-    orig_hw: Tuple[int, int]      # (H0, W0)
-    padded_hw: Tuple[int, int]    # (Hp, Wp)
+    orig_hw: Tuple[int, int]
+    padded_hw: Tuple[int, int]
     pad_bottom: int
     pad_right: int
     patch: int
-    resized_hw: Tuple[int, int]   # (hg, wg) mask/token grid used downstream
+    resized_hw: Tuple[int, int]
 
 
 def pad_to_multiple(x: torch.Tensor, multiple: int) -> Tuple[torch.Tensor, PadMeta]:

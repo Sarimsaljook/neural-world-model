@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from ...common.logging import get_logger
-from ...models.erfg.io import erfg_to_json
 from ..loop.realtime import RealtimeEngine, RealtimeConfig
 from ..ingest.camera import CameraConfig
 from ..loop.scheduler import RuntimeClocks
@@ -24,7 +22,7 @@ class PredictRequest(BaseModel):
 class CounterfactualRequest(BaseModel):
     horizon: int = 15
     dt: float = 1.0
-    interventions: Dict[str, Any] = {}  # e.g. {"remove": ["id1"], "velocity_delta": {"id2":[10,0]}}
+    interventions: Dict[str, Any] = {}
 
 
 def create_app(engine: RealtimeEngine) -> FastAPI:

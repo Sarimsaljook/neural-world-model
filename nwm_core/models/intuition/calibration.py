@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Tuple
 
 import torch
 import torch.nn as nn
@@ -9,10 +9,6 @@ import torch.nn.functional as F
 
 
 class TemperatureScaler(nn.Module):
-    """
-    Temperature scaling for logits calibration.
-    Fit on a held-out validation set: minimize NLL.
-    """
 
     def __init__(self, init_temp: float = 1.0):
         super().__init__()

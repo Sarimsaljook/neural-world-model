@@ -122,7 +122,7 @@ class Mask2FormerInstSeg(nn.Module):
         device = image_rgb_01.device
         b, _, H, W = image_rgb_01.shape
 
-        # Convert to uint8 HWC on CPU
+        # convert to uint8 HWC on CPU
         imgs_u8 = (image_rgb_01.clamp(0, 1) * 255.0).to(torch.uint8)
         imgs_u8 = imgs_u8.permute(0, 2, 3, 1).contiguous().cpu().numpy()  # (B,H,W,3) uint8
 

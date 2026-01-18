@@ -6,7 +6,7 @@ import torch
 @dataclass
 class AmpConfig:
     enable: bool = True
-    dtype: str = "bf16"  # "fp16" or "bf16"
+    dtype: str = "bf16"
 
     def autocast(self):
         if not self.enable:
