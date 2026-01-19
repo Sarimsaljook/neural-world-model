@@ -1,36 +1,86 @@
-inherits: [configs/base.yaml]
+stage:
+  name: stage1_encoder
+  entrypoint: nwm_core.train.stages.stage1_encoder
 
-stage: stage1_encoder
+seed: 1337
 
-data_mix:
-  - {source: webvideo, path: configs/data/webvideo.yaml, weight: 0.70}
-  - {source: sim,      path: configs/data/sim.yaml,      weight: 0.30}
+paths:
+  run_root: outputs/train/${stage.name}
+  data_root: assets/training_data
+  ckpt_root: ${paths.run_root}/checkpoints
+  report_root: ${paths.run_root}/reports
 
-model:
-  encoder: configs/model/encoder.yaml
+configs:
+  data:
+    ssv2: ${configs.data.ssv2}
+
+device:
+  accelerator: cuda
+  precision: bf16
+  cudnn_benchmark: true
+
+data:
+  dataset: ${configs.data.ssv2}
+  num_workers: 14
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 4
 
 train:
   max_steps: 200000
-  input_res: 320
-  sequence_len: 2
-  batch_size: 12
-  grad_accum: 4
-  eval_batch_size: 8
+  eval_every: 2000
+  ckpt_every: 5000
+  log_every: 50
+  grad_accum: 1
+  batch_size: 16
+  clip_grad_norm: 1.0
+
+model:
+  train_parts:
+    encoder: true
+    compiler: false
+    mechanisms: false
+    intuition: false
+    memory: false
+    planning: false
+
+  encoder:
+    name: evidence_encoder
+    num_classes: 80
+    use_keypoints: false
+    use_instseg: true
+    instseg:
+      model_id: facebook/mask2former-swin-large-coco-instance
+      max_queries: 100
+      score_thresh: 0.35
+      mask_thresh: 0.40
+      min_area_frac: 0.002
+
+loss:
+  weights:
+    inst_presence: 1.0
+    emb_temporal: 1.0
+    box_smooth: 0.25
+    mask_smooth: 0.25
 
 optim:
   name: adamw
-  lr: 3.0e-4
-  weight_decay: 0.05
+  lr: 2.5e-4
   betas: [0.9, 0.95]
-  schedule: {name: cosine, warmup_steps: 5000, min_lr: 3.0e-5}
+  wd: 0.05
+  warmup_steps: 2500
+  schedule: cosine
+  min_lr: 2.5e-6
 
-freeze:
-  backbone: false
-  heads: false
+ema:
+  enable: true
+  decay: 0.9998
 
-loss:
-  lambda_cls: 1.0
-  lambda_reid: 0.5
-  lambda_depth: 0.4
-  lambda_flow: 0.2
-  lambda_unc: 0.2
+amp:
+  enable: true
+
+checkpoint:
+  save_last: true
+  save_best: true
+  metric: val/loss
+  mode: min

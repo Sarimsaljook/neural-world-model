@@ -1,29 +1,99 @@
-inherits: [configs/base.yaml]
+stage:
+  name: stage6_memory
+  entrypoint: nwm_core.train.stages.stage6_memory
 
-stage: stage6_memory
+seed: 1337
 
-data_mix:
-  - {source: robotics, path: configs/data/robotics.yaml, weight: 0.60}
-  - {source: webvideo, path: configs/data/webvideo.yaml, weight: 0.40}
+paths:
+  run_root: outputs/train/${stage.name}
+  data_root: assets/training_data
+  ckpt_root: ${paths.run_root}/checkpoints
+  report_root: ${paths.run_root}/reports
 
-model:
-  memory: configs/model/memory.yaml
+configs:
+  data:
+    ssv2: ${configs.data.ssv2}
+
+device:
+  accelerator: cuda
+  precision: bf16
+  cudnn_benchmark: true
+
+data:
+  dataset: ${configs.data.ssv2}
+  num_workers: 14
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 4
 
 train:
-  max_steps: 60000
-  sequence_len: 16
-  batch_size: 32
-  grad_accum: 2
-  eval_batch_size: 32
+  max_steps: 80000
+  eval_every: 2000
+  ckpt_every: 5000
+  log_every: 50
+  grad_accum: 1
+  batch_size: 22
+  clip_grad_norm: 1.0
+
+init:
+  encoder_ckpt: outputs/train/stage1_encoder/checkpoints/last.pt
+  compiler_ckpt: outputs/train/stage2_compiler/checkpoints/last.pt
+  mechanisms_ckpt: outputs/train/stage3_mechanisms/checkpoints/last.pt
+  intuition_ckpt: outputs/train/stage4_intuition/checkpoints/last.pt
+  planning_ckpt: outputs/train/stage5_probe_planner/checkpoints/last.pt
+  strict: false
+
+model:
+  train_parts:
+    encoder: false
+    compiler: false
+    mechanisms: false
+    intuition: false
+    memory: true
+    planning: false
+
+  memory:
+    episodic:
+      enable: true
+      horizon_steps: 64
+    semantic:
+      enable: true
+      max_facts: 2048
+    spatial:
+      enable: true
+      grid_size: 64
+    rules:
+      enable: true
+      max_rules: 1024
+    consolidation:
+      enable: true
+      every_n_steps: 8
+
+loss:
+  weights:
+    retrieval_gain: 1.0
+    event_f1_proxy: 0.75
+    graph_stability: 0.5
+    rule_consistency: 0.5
 
 optim:
   name: adamw
-  lr: 3.0e-4
-  weight_decay: 0.01
+  lr: 1.25e-4
   betas: [0.9, 0.95]
-  schedule: {name: cosine, warmup_steps: 1000, min_lr: 3.0e-5}
+  wd: 0.02
+  warmup_steps: 1500
+  schedule: cosine
+  min_lr: 8.0e-7
 
-loss:
-  lambda_epi: 1.0
-  lambda_concept: 0.5
-  lambda_rule: 0.2
+ema:
+  enable: true
+  decay: 0.9998
+
+amp:
+  enable: true
+
+checkpoint:
+  save_last: true
+  save_best: true
+  metric: val/loss
+  mode: min

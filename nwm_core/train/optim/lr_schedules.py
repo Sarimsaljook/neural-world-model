@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Callable
 
 @dataclass
-class CosineSchedule:
+class WarmupCosine:
+    base_lr: float
     warmup_steps: int
-    max_steps: int
-    min_lr: float
+    total_steps: int
+    min_lr: float = 0.0
 
-    def lr_at(self, base_lr: float, step: int) -> float:
+    def lr(self, step: int) -> float:
+        step = int(step)
         if step < self.warmup_steps:
-            return base_lr * float(step + 1) / float(max(1, self.warmup_steps))
-        t = float(step - self.warmup_steps) / float(max(1, self.max_steps - self.warmup_steps))
-        t = min(1.0, max(0.0, t))
-        return self.min_lr + 0.5 * (base_lr - self.min_lr) * (1.0 + math.cos(math.pi * t))
+            return self.base_lr * (step + 1) / max(1, self.warmup_steps)
+        t = (step - self.warmup_steps) / max(1, self.total_steps - self.warmup_steps)
+        t = min(max(t, 0.0), 1.0)
+        c = 0.5 * (1.0 + math.cos(math.pi * t))
+        return self.min_lr + (self.base_lr - self.min_lr) * c

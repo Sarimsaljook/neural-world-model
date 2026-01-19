@@ -1,40 +1,87 @@
-inherits: [configs/base.yaml]
+stage:
+  name: stage4_intuition
+  entrypoint: nwm_core.train.stages.stage4_intuition
 
-stage: stage4_intuition
+seed: 1337
 
-data_mix:
-  - {source: sim,      path: configs/data/sim.yaml,      weight: 0.60}
-  - {source: robotics, path: configs/data/robotics.yaml, weight: 0.25}
-  - {source: webvideo, path: configs/data/webvideo.yaml, weight: 0.15}
+paths:
+  run_root: outputs/train/${stage.name}
+  data_root: assets/training_data
+  ckpt_root: ${paths.run_root}/checkpoints
+  report_root: ${paths.run_root}/reports
 
-model:
-  encoder: configs/model/encoder.yaml
-  erfg: configs/model/erfg.yaml
-  compiler: configs/model/compiler.yaml
-  mechanisms: configs/model/mechanisms.yaml
-  intuition: configs/model/intuition.yaml
+configs:
+  data:
+    ssv2: ${configs.data.ssv2}
+
+device:
+  accelerator: cuda
+  precision: bf16
+  cudnn_benchmark: true
+
+data:
+  dataset: ${configs.data.ssv2}
+  num_workers: 14
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 4
 
 train:
-  max_steps: 80000
-  input_res: 256
-  sequence_len: 8
-  batch_size: 8
-  grad_accum: 4
-  eval_batch_size: 8
+  max_steps: 120000
+  eval_every: 2000
+  ckpt_every: 5000
+  log_every: 50
+  grad_accum: 1
+  batch_size: 18
+  clip_grad_norm: 1.0
+
+init:
+  encoder_ckpt: outputs/train/stage1_encoder/checkpoints/last.pt
+  compiler_ckpt: outputs/train/stage2_compiler/checkpoints/last.pt
+  mechanisms_ckpt: outputs/train/stage3_mechanisms/checkpoints/last.pt
+  strict: false
+
+model:
+  train_parts:
+    encoder: false
+    compiler: false
+    mechanisms: false
+    intuition: true
+    memory: false
+    planning: false
+
+  intuition:
+    horizon_s: 3.0
+    calibration:
+      enable: true
+      temperature_init: 1.0
+
+loss:
+  weights:
+    risk_bce: 1.0
+    stability_bce: 1.0
+    slip_bce: 0.5
+    collision_bce: 0.75
+    calibration_ece: 0.25
 
 optim:
   name: adamw
-  lr: 2.0e-4
-  weight_decay: 0.01
+  lr: 2.25e-4
   betas: [0.9, 0.95]
-  schedule: {name: cosine, warmup_steps: 2000, min_lr: 2.0e-5}
+  wd: 0.02
+  warmup_steps: 2000
+  schedule: cosine
+  min_lr: 1.0e-6
 
-freeze:
-  encoder_backbone: true
-  compiler: true
-  mechanisms: true
+ema:
+  enable: true
+  decay: 0.9998
 
-loss:
-  lambda_bce: 1.0
-  lambda_rank: 0.5
-  lambda_cal: 0.2
+amp:
+  enable: true
+
+checkpoint:
+  save_last: true
+  save_best: true
+  metric: val/loss
+  mode: min

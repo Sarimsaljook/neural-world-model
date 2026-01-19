@@ -1,15 +1,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 import torch
 
+
 @dataclass
-class AmpConfig:
-    enable: bool = True
-    dtype: str = "bf16"
+class AMP:
+    enabled: bool = True
+
+    def __post_init__(self):
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self.enabled)
 
     def autocast(self):
-        if not self.enable:
-            return torch.autocast("cuda", enabled=False)
-        dt = torch.bfloat16 if self.dtype.lower() == "bf16" else torch.float16
-        return torch.autocast("cuda", dtype=dt)
+        return torch.cuda.amp.autocast(enabled=self.enabled)
+
+    def backward(self, loss: torch.Tensor):
+        self.scaler.scale(loss).backward()
+
+    def step(self, opt: torch.optim.Optimizer):
+        self.scaler.step(opt)
+        self.scaler.update()
+
+    def unscale_(self, opt: torch.optim.Optimizer):
+        self.scaler.unscale_(opt)

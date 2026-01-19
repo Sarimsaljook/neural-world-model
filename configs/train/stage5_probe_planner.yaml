@@ -1,46 +1,97 @@
-inherits: [configs/base.yaml]
+stage:
+  name: stage5_probe_planner
+  entrypoint: nwm_core.train.stages.stage5_probe_planner
 
-stage: stage5_probe_planner
+seed: 1337
 
-data_mix:
-  - {source: sim, path: configs/data/sim.yaml, weight: 1.0}
+paths:
+  run_root: outputs/train/${stage.name}
+  data_root: assets/training_data
+  ckpt_root: ${paths.run_root}/checkpoints
+  report_root: ${paths.run_root}/reports
 
-model:
-  erfg: configs/model/erfg.yaml
-  mechanisms: configs/model/mechanisms.yaml
-  planner: configs/model/planner.yaml
+configs:
+  data:
+    ssv2: ${configs.data.ssv2}
+
+device:
+  accelerator: cuda
+  precision: bf16
+  cudnn_benchmark: true
+
+data:
+  dataset: ${configs.data.ssv2}
+  num_workers: 14
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 4
 
 train:
-  max_steps: 200000
-  sequence_len: 32
-  batch_size: 1
+  max_steps: 80000
+  eval_every: 2000
+  ckpt_every: 5000
+  log_every: 50
   grad_accum: 1
+  batch_size: 22
+  clip_grad_norm: 1.0
 
-rl:
-  algo: sac
-  replay_size: 500000
-  warmup_steps: 5000
-  update_every_steps: 1
-  gamma: 0.99
-  tau: 0.005
-  batch_size: 256
-  actor_lr: 3.0e-4
-  critic_lr: 3.0e-4
-  alpha: auto
-  target_entropy: auto
+init:
+  encoder_ckpt: outputs/train/stage1_encoder/checkpoints/last.pt
+  compiler_ckpt: outputs/train/stage2_compiler/checkpoints/last.pt
+  mechanisms_ckpt: outputs/train/stage3_mechanisms/checkpoints/last.pt
+  intuition_ckpt: outputs/train/stage4_intuition/checkpoints/last.pt
+  strict: false
 
-objective:
-  info_gain_weight: 1.0
-  cost_weight: 0.2
-  risk_weight: 1.0
+model:
+  train_parts:
+    encoder: false
+    compiler: false
+    mechanisms: false
+    intuition: false
+    memory: false
+    planning: true
 
-distill:
+  planning:
+    constraints:
+      enable: true
+    programs:
+      enable: true
+    mpc:
+      enable: true
+      policy_prior_dim: 256
+    probing:
+      enable: true
+    distill:
+      enable: true
+      buffer_max_items: 50000
+      embed_dim: 256
+
+loss:
+  weights:
+    constraint_score: 1.0
+    program_likelihood: 0.75
+    probe_utility: 0.5
+    mpc_prior: 0.25
+    distill_aux: 0.25
+
+optim:
+  name: adamw
+  lr: 1.6e-4
+  betas: [0.9, 0.95]
+  wd: 0.02
+  warmup_steps: 1500
+  schedule: cosine
+  min_lr: 1.0e-6
+
+ema:
   enable: true
-  teacher:
-    type: constraint_mpc
-    rollout_horizon: 20
-    candidates: 512
-  losses:
-    lambda_bc: 1.0
-    lambda_v: 0.5
-    lambda_safe: 1.0
+  decay: 0.9998
+
+amp:
+  enable: true
+
+checkpoint:
+  save_last: true
+  save_best: true
+  metric: val/loss
+  mode: min
