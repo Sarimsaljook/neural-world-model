@@ -21,18 +21,18 @@ device:
 
 data:
   dataset: ${configs.data.ssv2}
-  num_workers: 14
+  num_workers: 2
   pin_memory: true
   persistent_workers: true
-  prefetch_factor: 4
+  prefetch_factor: 2
 
 train:
-  max_steps: 200000
-  eval_every: 2000
-  ckpt_every: 5000
+  max_steps: 50_000
+  eval_every: 500
+  ckpt_every: 1250
   log_every: 50
   grad_accum: 1
-  batch_size: 16
+  batch_size: 4
   clip_grad_norm: 1.0
 
 model:

@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterator, List, Tuple
 import cv2
 import numpy as np
 import torch
+import torchvision.transforms.functional as F
 
 
 @dataclass(frozen=True)
@@ -92,11 +93,14 @@ def _sample_clip(frames: List[np.ndarray], cfg: ReaderCfg) -> List[np.ndarray]:
 
 
 def _to_tensor(frames_bgr: List[np.ndarray], cfg: ReaderCfg) -> torch.Tensor:
-    proc = [_resize_keep_ar(f, cfg.resize_short, cfg.max_size) for f in frames_bgr]
-    rgb = [cv2.cvtColor(f, cv2.COLOR_BGR2RGB) for f in proc]
-    x = np.stack(rgb, axis=0)  # (T,H,W,3)
-    x = torch.from_numpy(x).permute(0, 3, 1, 2).contiguous().float() / 255.0
-    return x  # (T,3,H,W)
+    rgb = [cv2.cvtColor(f, cv2.COLOR_BGR2RGB) for f in frames_bgr]
+    x = np.stack(rgb, axis=0)
+    x = torch.from_numpy(x).permute(0, 3, 1, 2).contiguous()  # [T, 3, H, W]
+
+    x = F.resize(x, cfg.resize_short)
+    x = F.center_crop(x, (cfg.resize_short, cfg.max_size))
+
+    return x.float() / 255.0
 
 
 def iter_samples(shards_glob: str, cfg: ReaderCfg, infinite: bool = True) -> Iterator[Dict[str, Any]]:

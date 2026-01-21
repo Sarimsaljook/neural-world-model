@@ -1,6 +1,8 @@
+matplotlib
+torchvision
 opencv-python~=4.12.0.88
 numpy~=2.2.6
-torch~=2.11.0.dev20251215+cu128
+torch~=2.11.0.dev20260119+cu128
 pyttsx3~=2.99
 uvicorn~=0.40.0
 PyYAML~=6.0.3

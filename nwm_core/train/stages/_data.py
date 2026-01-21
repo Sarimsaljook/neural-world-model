@@ -58,8 +58,8 @@ def build_datapipe(data_cfg: Dict[str, Any], stage_cfg: Dict[str, Any]) -> DataP
         clip_len=int(r.get("clip_len", 16)),
         stride=int(r.get("stride", 2)),
         fps_target=int(r.get("fps_target", 15)),
-        resize_short=int(stage_cfg.get("data", {}).get("resize_short", 256)),
-        max_size=int(stage_cfg.get("data", {}).get("max_size", 384)),
+        resize_short=int(r.get("resize_short", 256)),
+        max_size=int(r.get("max_size", 384)),
         shuffle_buffer=int((data_cfg.get("streaming", {}) or {}).get("shuffle_buffer", 4096)),
         seed=int(stage_cfg.get("seed", 1337)),
     )
